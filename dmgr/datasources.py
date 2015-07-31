@@ -5,6 +5,7 @@ import numpy as np
 class DataSource(object):
 
     def __init__(self, data, targets):
+        assert data.shape[0] == targets.shape[0]
         self.data = data
         self.targets = targets
 
@@ -22,12 +23,16 @@ class DataSource(object):
         return self.data[item], self.targets[item]
 
     @property
+    def shape(self):
+        return self.data.shape
+
+    @property
     def n_data(self):
-        return self.data.shape[0]
+        return self.shape[0]
 
     @property
     def data_shape(self):
-        return self.data.shape[1:]
+        return self.shape[1:]
 
     def __len__(self):
         return self.n_data
@@ -65,6 +70,10 @@ class AggregatedDataSource(object):
             return (np.vstack([self.data[i] for i in item]),
                     np.vstack([self.targets[i] for i in item]))
         return np.vstack(self.data[item]), np.vstack(self.targets[item])
+
+    @property
+    def shape(self):
+        return (self.n_data,) + self.data_shape
 
     @property
     def n_data(self):

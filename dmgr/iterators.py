@@ -2,13 +2,13 @@ import random
 
 
 def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
-    idxs = range(data_source.n_data)
+    idxs = range(len(data_source))
 
     if shuffle:
         random.shuffle(idxs)
 
     start_idx = 0
-    while start_idx < data_source.n_data:
+    while start_idx < len(data_source):
         batch_idxs = idxs[start_idx:start_idx + batch_size]
 
         # last batch could be too small
