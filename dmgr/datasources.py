@@ -41,16 +41,20 @@ class DataSource(object):
 class AggregatedDataSource(object):
 
     def __init__(self, data_sources):
-        self.data = [d.data[i]
+        # TODO: try to make this nicer....
+        self.data = [d[i][0]
                      for d in data_sources
                      for i in range(len(d))]
-        self.targets = [d.targets[i]
+        self.targets = [d[i][1]
                         for d in data_sources
                         for i in range(len(d))]
 
     @classmethod
-    def from_files(cls, data_files, target_files, memory_mapped=False):
-        return cls([DataSource.from_files(d, t, memory_mapped)
+    def from_files(cls, data_files, target_files, memory_mapped=False,
+                   data_source_type=DataSource, **kwargs):
+        return cls([data_source_type.from_files(d, t,
+                                                memory_mapped=memory_mapped,
+                                                **kwargs)
                     for d, t in izip(data_files, target_files)])
 
     def save(self, data_file, target_file):
@@ -69,6 +73,8 @@ class AggregatedDataSource(object):
         if isinstance(item, list):
             return (np.vstack([self.data[i] for i in item]),
                     np.vstack([self.targets[i] for i in item]))
+        if isinstance(item, int):
+            return self.data[item], self.targets[item]
         return np.vstack(self.data[item]), np.vstack(self.targets[item])
 
     @property
@@ -228,9 +234,14 @@ class ContextDataSource(object):
     def __getitem__(self, item):
         assert type(item) == int, 'currently only int is supported as index'
 
+        # wraparound
+        if item < 0:
+            item = self.n_data - item
+
         if item < self.context_size:
             return self.begin_data[item], self.targets[item]
         elif item >= self.n_data - self.context_size:
+            item -= self.n_data - self.context_size
             return self.end_data[item], self.targets[item]
         else:
             return self.data[item - self.context_size], self.targets[item]
