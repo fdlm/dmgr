@@ -71,7 +71,7 @@ class AggregatedDataSource(object):
 
     def __getitem__(self, item):
         if isinstance(item, list):
-            return (np.vstack([self.data[i] for i in item]),
+            return (np.vstack([[self.data[i]] for i in item]),
                     np.vstack([self.targets[i] for i in item]))
         if isinstance(item, int):
             return self.data[item], self.targets[item]
