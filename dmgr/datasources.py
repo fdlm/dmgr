@@ -40,22 +40,23 @@ class DataSource(object):
 
 class AggregatedDataSource(object):
 
-    def __init__(self, data_sources):
+    def __init__(self, data_sources, use_perc=1.0):
         # TODO: try to make this nicer....
         self.data = [d[i][0]
                      for d in data_sources
-                     for i in range(len(d))]
+                     for i in range(int(len(d) * use_perc))]
         self.targets = [d[i][1]
                         for d in data_sources
-                        for i in range(len(d))]
+                        for i in range(int(len(d) * use_perc))]
 
     @classmethod
     def from_files(cls, data_files, target_files, memory_mapped=False,
-                   data_source_type=DataSource, **kwargs):
-        return cls([data_source_type.from_files(d, t,
-                                                memory_mapped=memory_mapped,
-                                                **kwargs)
-                    for d, t in izip(data_files, target_files)])
+                   data_source_type=DataSource, use_perc=1.0, **kwargs):
+        return cls(
+            [data_source_type.from_files(d, t, memory_mapped=memory_mapped,
+                                         **kwargs)
+             for d, t in izip(data_files, target_files)], use_perc=use_perc
+        )
 
     def save(self, data_file, target_file):
         data_shape = (self.n_data,) + self.data[0].shape
