@@ -41,13 +41,9 @@ class DataSource(object):
 class AggregatedDataSource(object):
 
     def __init__(self, data_sources, use_perc=1.0):
-        # TODO: try to make this nicer....
-        self.data = [d[i][0]
-                     for d in data_sources
-                     for i in range(int(len(d) * use_perc))]
-        self.targets = [d[i][1]
-                        for d in data_sources
-                        for i in range(int(len(d) * use_perc))]
+        self.data_sources = data_sources
+        self.ds_ends = np.array(
+            [0] + [int(len(d) * use_perc) for d in data_sources]).cumsum()
 
     @classmethod
     def from_files(cls, data_files, target_files, memory_mapped=False,
@@ -60,23 +56,33 @@ class AggregatedDataSource(object):
 
     def save(self, data_file, target_file):
         data_shape = (self.n_data,) + self.data[0].shape
-        df = np.memmap(data_file, mode='w',
+        df = np.memmap(data_file, mode='w+',
                        shape=data_shape, dtype=self.data[0].dtype)
         target_shape = (self.n_data,) + self.targets[0].shape
-        tf = np.memmap(target_file, mode='w',
+        tf = np.memmap(target_file, mode='w+',
                        shape=target_shape, dtype=self.targets[0].dtype)
 
         for i in range(self.n_data):
             df[i] = self.data[i]
             tf[i] = self.targets[i]
 
+    def _to_ds_idx(self, idx):
+        ds_idx = self.ds_ends.searchsorted(idx, side='right') - 1
+        d_idx = idx - self.ds_ends[ds_idx]
+        return ds_idx, d_idx
+
     def __getitem__(self, item):
-        if isinstance(item, list):
-            return (np.vstack([[self.data[i]] for i in item]),
-                    np.vstack([self.targets[i] for i in item]))
+        """
+        only list and int supported at the moment...
+        """
         if isinstance(item, int):
-            return self.data[item], self.targets[item]
-        return np.vstack(self.data[item]), np.vstack(self.targets[item])
+            ds_idx, d_idx = self._to_ds_idx(item)
+            return self.data_sources[ds_idx][d_idx]
+        if isinstance(item, list):
+            data, targets = zip(*[self[i] for i in item])
+            return (np.vstack(data),
+                    np.vstack(targets))
+        raise TypeError('only list and int indices supported')
 
     @property
     def shape(self):
@@ -84,11 +90,11 @@ class AggregatedDataSource(object):
 
     @property
     def n_data(self):
-        return len(self.data)
+        return self.ds_ends[-1]
 
     @property
     def data_shape(self):
-        return self.data[0].shape if self.n_data > 0 else (0,)
+        return self.data_sources[0].data_shape if self.n_data > 0 else (0,)
 
     def __len__(self):
         return self.n_data
