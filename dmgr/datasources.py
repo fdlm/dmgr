@@ -239,7 +239,7 @@ class ContextDataSource(object):
                    np.load(target_file, mmap_mode=mmap), context_size)
 
     def __getitem__(self, item):
-        assert type(item) == int, 'currently only int is supported as index'
+        assert isinstance(item, int), 'currently only int is supported as index'
 
         # wraparound
         if item < 0:
@@ -248,8 +248,8 @@ class ContextDataSource(object):
         if item < self.context_size:
             return self.begin_data[item], self.targets[item]
         elif item >= self.n_data - self.context_size:
-            item -= self.n_data - self.context_size
-            return self.end_data[item], self.targets[item]
+            data_item = item - self.n_data + self.context_size
+            return self.end_data[data_item], self.targets[item]
         else:
             return self.data[item - self.context_size], self.targets[item]
 
