@@ -80,8 +80,8 @@ class AggregatedDataSource(object):
             return self.data_sources[ds_idx][d_idx]
         if isinstance(item, list):
             data, targets = zip(*[self[i] for i in item])
-            return (np.vstack(data),
-                    np.vstack(targets))
+            return (np.vstack([[d] for d in data]),
+                    np.hstack(targets))
         raise TypeError('only list and int indices supported')
 
     @property
