@@ -1,4 +1,6 @@
-from itertools import izip
+from itertools import izip, groupby
+from tempfile import TemporaryFile
+import os
 import numpy as np
 
 
@@ -6,8 +8,14 @@ class DataSource(object):
 
     def __init__(self, data, targets):
         assert data.shape[0] == targets.shape[0]
-        self.data = data
-        self.targets = targets
+        self._data = data
+        self._targets = targets
+
+        if self._data.ndim == 1:
+            self._data = self._data[:, np.newaxis]
+
+        if self._targets.ndim == 1:
+            self._targets = self._targets[:, np.newaxis]
 
     @classmethod
     def from_files(cls, data_file, target_file, memory_mapped=False):
@@ -16,33 +24,49 @@ class DataSource(object):
                    np.load(target_file, mmap_mode=mmap))
 
     def save(self, data_file, target_file):
-        np.save(data_file, self.data)
-        np.save(target_file, self.targets)
+        np.save(data_file, self._data)
+        np.save(target_file, self._targets)
 
     def __getitem__(self, item):
-        return self.data[item], self.targets[item]
-
-    @property
-    def shape(self):
-        return self.data.shape
+        return self._data[item], self._targets[item]
 
     @property
     def n_data(self):
-        return self.shape[0]
-
-    @property
-    def data_shape(self):
-        return self.shape[1:]
+        return self._data.shape[0]
 
     def __len__(self):
         return self.n_data
+
+    @property
+    def feature_shape(self):
+        return self._data.shape[1:]
+
+    @property
+    def target_shape(self):
+        return self._targets.shape[1:]
+
+    @property
+    def dtype(self):
+        return self._data.dtype
+
+    @property
+    def ttype(self):
+        return self._targets.dtype
 
 
 class AggregatedDataSource(object):
 
     def __init__(self, data_sources, use_perc=1.0):
-        self.data_sources = data_sources
-        self.ds_ends = np.array(
+        assert len(data_sources) > 0, 'Need at least one data source'
+        assert all(x.feature_shape == data_sources[0].feature_shape
+                   for x in data_sources), \
+            'Data sources dimensionality has to be equal'
+        assert all(x.target_shape == data_sources[0].target_shape
+                   for x in data_sources), \
+            'Data sources target dimensionality has to be equal'
+
+        self._data_sources = data_sources
+        self._ds_ends = np.array(
             [0] + [int(len(d) * use_perc) for d in data_sources]).cumsum()
 
     @classmethod
@@ -55,20 +79,24 @@ class AggregatedDataSource(object):
         )
 
     def save(self, data_file, target_file):
-        data_shape = (self.n_data,) + self.data[0].shape
-        df = np.memmap(data_file, mode='w+',
-                       shape=data_shape, dtype=self.data[0].dtype)
-        target_shape = (self.n_data,) + self.targets[0].shape
-        tf = np.memmap(target_file, mode='w+',
-                       shape=target_shape, dtype=self.targets[0].dtype)
 
-        for i in range(self.n_data):
-            df[i] = self.data[i]
-            tf[i] = self.targets[i]
+        with TemporaryFile() as data_tmp, TemporaryFile() as target_temp:
+            data_shape = (self.n_data,) + self.feature_shape
+            df = np.memmap(data_tmp, shape=data_shape, dtype=self.dtype)
+            target_shape = (self.n_data,) + self.target_shape
+            tf = np.memmap(target_temp, shape=target_shape, dtype=self.ttype)
+
+            for i in range(self.n_data):
+                d, t = self[i]
+                df[i] = d
+                tf[i] = t
+
+            np.save(data_file, df)
+            np.save(target_file, tf)
 
     def _to_ds_idx(self, idx):
-        ds_idx = self.ds_ends.searchsorted(idx, side='right') - 1
-        d_idx = idx - self.ds_ends[ds_idx]
+        ds_idx = self._ds_ends.searchsorted(idx, side='right') - 1
+        d_idx = idx - self._ds_ends[ds_idx]
         return ds_idx, d_idx
 
     def __getitem__(self, item):
@@ -77,27 +105,47 @@ class AggregatedDataSource(object):
         """
         if isinstance(item, int):
             ds_idx, d_idx = self._to_ds_idx(item)
-            return self.data_sources[ds_idx][d_idx]
-        if isinstance(item, list):
-            data, targets = zip(*[self[i] for i in item])
-            return (np.vstack([[d] for d in data]),
-                    np.hstack(targets))
-        raise TypeError('only list and int indices supported')
+            return self._data_sources[ds_idx][d_idx]
 
-    @property
-    def shape(self):
-        return (self.n_data,) + self.data_shape
+        elif isinstance(item, list):
+            item.sort()
+            ds_idxs, d_idxs = self._to_ds_idx(item)
+            data_list = []
+            target_list = []
+
+            for ds_idx, d_idx_iter in groupby(enumerate(d_idxs),
+                                              lambda i: ds_idxs[i[0]]):
+                d_idx = [di[1] for di in d_idx_iter]
+                d, t = self._data_sources[ds_idx][d_idx]
+                data_list.append(d)
+                target_list.append(t)
+
+            return np.vstack(data_list), np.vstack(target_list)
+        else:
+            raise TypeError('Only list and int indices supported')
 
     @property
     def n_data(self):
-        return self.ds_ends[-1]
-
-    @property
-    def data_shape(self):
-        return self.data_sources[0].data_shape if self.n_data > 0 else (0,)
+        return sum(ds.n_data for ds in self._data_sources)
 
     def __len__(self):
         return self.n_data
+
+    @property
+    def feature_shape(self):
+        return self._data_sources[0].feature_shape
+
+    @property
+    def target_shape(self):
+        return self._data_sources[0].target_shape
+
+    @property
+    def dtype(self):
+        return self._data_sources[0].dtype
+
+    @property
+    def ttype(self):
+        return self._data_sources[0].ttype
 
 
 # taken from: http://www.scipy.org/Cookbook/SegmentAxis
@@ -212,24 +260,34 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
 class ContextDataSource(object):
 
     def __init__(self, data, targets, context_size):
+
+        if data.ndim == 1:
+            data = data[:, np.newaxis]
+        if targets.ndim == 1:
+            targets = targets[:, np.newaxis]
+
         frame_size = 1 + 2 * context_size
         self.context_size = context_size
-        self.data = segment_axis(data, frame_size, axis=0)
-        self.targets = targets
+        self._data = segment_axis(data, frame_size, axis=0)
+        self._targets = targets
+        self._n_data = data.shape[0]
 
         filler = np.zeros_like(data[0])
 
-        self.begin_data = np.array(
+        self._begin_data = np.array(
             [np.vstack([filler] * (context_size - i) +
                        [data[0:i + context_size + 1]])
              for i in range(context_size)]
         )
 
-        self.end_data = np.array(
+        self._end_data = np.array(
             [np.vstack([data[data.shape[0] - context_size - i - 1:]] +
                        [filler] * (context_size - i))
              for i in range(context_size)[::-1]]
         )
+
+        assert (self._n_data == self._data.shape[0] +
+                self._begin_data.shape[0] + self._end_data.shape[0])
 
     @classmethod
     def from_files(cls, data_file, target_file, context_size,
@@ -239,34 +297,64 @@ class ContextDataSource(object):
                    np.load(target_file, mmap_mode=mmap), context_size)
 
     def __getitem__(self, item):
-        assert isinstance(item, int), 'currently only int is supported as index'
+        if isinstance(item, int):
+            if item < self.context_size:
+                return self._begin_data[item], self._targets[item]
+            elif item >= self.n_data - self.context_size:
+                data_item = item - self.n_data + self.context_size
+                return self._end_data[data_item], self._targets[item]
+            else:
+                return self._data[item - self.context_size], self._targets[item]
+        elif isinstance(item, list):
+            item = np.array(item)
+            item.sort()
 
-        # wraparound
-        if item < 0:
-            item = self.n_data - item
+            gd_begin = np.searchsorted(item, self.context_size)
+            gd_end = np.searchsorted(item, self.n_data - self.context_size - 1,
+                                     side='right')
 
-        if item < self.context_size:
-            return self.begin_data[item], self.targets[item]
-        elif item >= self.n_data - self.context_size:
-            data_item = item - self.n_data + self.context_size
-            return self.end_data[data_item], self.targets[item]
+            d = []
+            t = []
+
+            if gd_begin < gd_end:
+                idxs = item[gd_begin:gd_end]
+                d.append(self._data[idxs - self.context_size])
+                t.append(self._targets[idxs])
+
+            if gd_begin > 0:
+                idxs = item[:gd_begin]
+                d.append(self._begin_data[idxs])
+                t.append(self._targets[idxs])
+
+            if gd_end < item.shape[0]:
+                idxs = item[gd_end:]
+                d.append(self._end_data[idxs - self.n_data + self.context_size])
+                t.append(self._targets[idxs])
+
+            return np.vstack(d), np.vstack(t)
+
         else:
-            return self.data[item - self.context_size], self.targets[item]
-
-    @property
-    def shape(self):
-        sh = self.data.shape
-        return (sh[0] + 2 * self.context_size,) + sh[1:]
+            raise TypeError('Only list and int indices supported')
 
     @property
     def n_data(self):
-        return self.shape[0]
-
-    @property
-    def data_shape(self):
-        return self.shape[1:]
+        return self._n_data
 
     def __len__(self):
         return self.n_data
 
+    @property
+    def feature_shape(self):
+        return self._data.shape[1:]
 
+    @property
+    def target_shape(self):
+        return self._targets.shape[1:]
+
+    @property
+    def dtype(self):
+        return self._data.dtype
+
+    @property
+    def ttype(self):
+        return self._targets.dtype

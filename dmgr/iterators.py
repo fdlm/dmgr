@@ -1,8 +1,43 @@
 import random
 
 
+def threaded(generator, num_cached=10):
+    """
+    Threaded generator
+    """
+    import Queue
+    queue = Queue.Queue(maxsize=num_cached)
+    queue = Queue.Queue(maxsize=num_cached)
+    end_marker = object()
+
+    # define producer
+    def producer():
+        # i = 0
+        for item in generator:
+            # print('Producing item {}'.format(i))
+            # i += 1
+            queue.put(item)
+        queue.put(end_marker)
+
+    # start producer
+    import threading
+    thread = threading.Thread(target=producer)
+    thread.daemon = True
+    thread.start()
+
+    # run as consumer
+    item = queue.get()
+    # i = 0
+    while item is not end_marker:
+        # print('Yielding item {}'.format(i))
+        # i += 1
+        yield item
+        queue.task_done()
+        item = queue.get()
+
+
 def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
-    idxs = range(len(data_source))
+    idxs = range(data_source.n_data)
 
     if shuffle:
         random.shuffle(idxs)
@@ -19,3 +54,5 @@ def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
 
         start_idx += batch_size
         yield data_source[batch_idxs]
+
+
