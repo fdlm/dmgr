@@ -7,7 +7,9 @@ import numpy as np
 class DataSource(object):
 
     def __init__(self, data, targets):
-        assert data.shape[0] == targets.shape[0]
+        assert data.shape[0] == targets.shape[0], \
+            'n_data = {}, n_targets = {}'.format(data.shape[0],
+                                                 targets.shape[0])
         self._data = data
         self._targets = targets
 
