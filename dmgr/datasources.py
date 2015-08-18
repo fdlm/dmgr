@@ -6,12 +6,12 @@ import numpy as np
 
 class DataSource(object):
 
-    def __init__(self, data, targets):
+    def __init__(self, data, targets, start=None, stop=None, step=None):
         assert data.shape[0] == targets.shape[0], \
             'n_data = {}, n_targets = {}'.format(data.shape[0],
                                                  targets.shape[0])
-        self._data = data
-        self._targets = targets
+        self._data = data[start:stop:step]
+        self._targets = targets[start:stop:step]
 
         if self._data.ndim == 1:
             self._data = self._data[:, np.newaxis]
@@ -20,10 +20,11 @@ class DataSource(object):
             self._targets = self._targets[:, np.newaxis]
 
     @classmethod
-    def from_files(cls, data_file, target_file, memory_mapped=False):
+    def from_files(cls, data_file, target_file, memory_mapped=False,
+                   *args, **kwargs):
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
-                   np.load(target_file, mmap_mode=mmap))
+                   np.load(target_file, mmap_mode=mmap), *args, **kwargs)
 
     def save(self, data_file, target_file):
         np.save(data_file, self._data)
@@ -261,12 +262,16 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
 
 class ContextDataSource(object):
 
-    def __init__(self, data, targets, context_size):
+    def __init__(self, data, targets, context_size,
+                 start=None, stop=None, step=None):
 
         if data.ndim == 1:
             data = data[:, np.newaxis]
         if targets.ndim == 1:
             targets = targets[:, np.newaxis]
+
+        data = data[start:stop:step]
+        targets = targets[start:stop:step]
 
         frame_size = 1 + 2 * context_size
         self.context_size = context_size
