@@ -270,8 +270,9 @@ class ContextDataSource(object):
         if targets.ndim == 1:
             targets = targets[:, np.newaxis]
 
-        data = data[start:stop:step]
-        targets = targets[start:stop:step]
+        data = data[start:stop]
+        targets = targets[start:stop]
+        self.step = step or 1
 
         frame_size = 1 + 2 * context_size
         self.context_size = context_size
@@ -298,26 +299,28 @@ class ContextDataSource(object):
 
     @classmethod
     def from_files(cls, data_file, target_file, context_size,
-                   memory_mapped=False):
+                   memory_mapped=False, *args, **kwargs):
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
-                   np.load(target_file, mmap_mode=mmap), context_size)
+                   np.load(target_file, mmap_mode=mmap), context_size,
+                   *args, **kwargs)
 
     def __getitem__(self, item):
         if isinstance(item, int):
+            item *= self.step
             if item < self.context_size:
                 return self._begin_data[item], self._targets[item]
-            elif item >= self.n_data - self.context_size:
-                data_item = item - self.n_data + self.context_size
+            elif item >= self._n_data - self.context_size:
+                data_item = item - self._n_data + self.context_size
                 return self._end_data[data_item], self._targets[item]
             else:
                 return self._data[item - self.context_size], self._targets[item]
         elif isinstance(item, list):
-            item = np.array(item)
+            item = np.array(item) * self.step
             item.sort()
 
             gd_begin = np.searchsorted(item, self.context_size)
-            gd_end = np.searchsorted(item, self.n_data - self.context_size - 1,
+            gd_end = np.searchsorted(item, self._n_data - self.context_size - 1,
                                      side='right')
 
             d = []
@@ -335,7 +338,7 @@ class ContextDataSource(object):
 
             if gd_end < item.shape[0]:
                 idxs = item[gd_end:]
-                d.append(self._end_data[idxs - self.n_data + self.context_size])
+                d.append(self._end_data[idxs - self._n_data + self.context_size])
                 t.append(self._targets[idxs])
 
             return np.vstack(d), np.vstack(t)
@@ -345,7 +348,7 @@ class ContextDataSource(object):
 
     @property
     def n_data(self):
-        return self._n_data
+        return self._n_data / self.step
 
     def __len__(self):
         return self.n_data
