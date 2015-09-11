@@ -1,5 +1,1 @@
-__author__ = 'filip'
-
-from . import datasources
-from . import iterators
-
+from . import (datasources, iterators, files)

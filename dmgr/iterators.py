@@ -12,10 +12,7 @@ def threaded(generator, num_cached=10):
 
     # define producer
     def producer():
-        # i = 0
         for item in generator:
-            # print('Producing item {}'.format(i))
-            # i += 1
             queue.put(item)
         queue.put(end_marker)
 
@@ -27,10 +24,7 @@ def threaded(generator, num_cached=10):
 
     # run as consumer
     item = queue.get()
-    # i = 0
     while item is not end_marker:
-        # print('Yielding item {}'.format(i))
-        # i += 1
         yield item
         queue.task_done()
         item = queue.get()

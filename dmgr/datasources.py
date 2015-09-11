@@ -1,6 +1,5 @@
 from itertools import izip, groupby
 from tempfile import TemporaryFile
-import os
 import numpy as np
 
 
