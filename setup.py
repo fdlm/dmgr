@@ -8,5 +8,5 @@ setup(
     license='',
     author='Filip Korzeniowski',
     author_email='filip.korzeniowski@jku.at',
-    description='', requires=['numpy']
+    description='', requires=['numpy', 'madmom']
 )

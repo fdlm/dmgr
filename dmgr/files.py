@@ -1,3 +1,4 @@
+import itertools as it
 import os
 import random
 import fnmatch
@@ -32,37 +33,51 @@ def expand(files_and_dirs, pattern):
     Goes through list of files and directories, and expands directories
     to all files contained in it matching the pattern.
     :param files_and_dirs: list of files and directories
-    :param pattern:        file pattern to look for in directories
+    :param pattern:        file pattern (or list of file patterns) to look for
+                           in directories.
     :return:               list of filenames
     """
     if not isinstance(files_and_dirs, list):
         files_and_dirs = [files_and_dirs]
 
-    def expand_dirs(d):
-        if os.path.isdir(d):
-            return list(find(d, pattern))
-        else:
-            return [d]
+    if not isinstance(pattern, list):
+        pattern = [pattern]
 
-    # search directories recursively, or just take the file
-    return sum(map(expand_dirs, files_and_dirs), [])
+    files = []
+    for p in pattern:
+        def expand_dirs(d):
+            if os.path.isdir(d):
+                return list(find(d, p))
+            else:
+                return [d]
+
+        files += sum(map(expand_dirs, files_and_dirs), [])
+
+    return files
 
 
-def prepare(files, compute_feat, compute_targets,
+def prepare(source_files, ground_truth_files, dest_dir,
+            compute_feat, compute_targets,
             feat_ext=FEAT_EXT, target_ext=TARGET_EXT, fps=FPS):
     """
-    Prepares features and ground truth for audio files. This function assumes
-    that audio files, feature files and target files will be stored in the
-    same directory. If the corresponding feature or target file already exists,
+    Prepares features and targets for audio files. This function assumes that
+    source and ground truth files are given in separate lists with matching
+    order (meaning that the first ground truth file matches the first
+    source file). Feature and target files will be named after the source
+    file with the given extensions into the given destination directory.
+    If the corresponding feature or target file already exists,
     it will not be computed again.
 
-    :param files:            list of audio files
+    :param source_files:     list of source files (e.g. list of audio files)
+    :param ground_truth_files: list of ground truth files (e.g. list of files
+                             with beat annotations). If 'None', no targets will
+                             be computed.
+    :param dest_dir:         directory where to store feature and target files
     :param compute_feat:     function that takes an audio file and computes the
                              features for it
     :param compute_targets:  function that takes the audio file name without
                              extension ('foo/bar/baz.flac' -> 'foo/bar/baz')
-                             and computes the ground truth for it. If 'None',
-                             no targets will be computed
+                             and computes the ground truth for it.
     :param feat_ext:         feature file extension
     :param target_ext:       target file extension.
     :param fps:              frames per second
@@ -73,17 +88,21 @@ def prepare(files, compute_feat, compute_targets,
     feat_files = []
     target_files = []
 
-    for f in files:
-        neutral_file = os.path.splitext(f)[0]
-        feat_file = neutral_file + feat_ext
+    if not ground_truth_files:
+        ground_truth_files = it.repeat(None)
+        target_files = None
+
+    for sf, gtf in zip(source_files, ground_truth_files):
+        neutral_file = os.path.splitext(os.path.basename(sf))[0]
+        feat_file = os.path.join(dest_dir, neutral_file + feat_ext)
 
         feat = None
         if not os.path.exists(feat_file):
-            feat = compute_feat(f)
+            feat = compute_feat(sf)
             np.save(feat_file, feat)
 
-        if compute_targets is not None:
-            target_file = neutral_file + target_ext
+        if gtf is not None:
+            target_file = os.path.join(dest_dir, neutral_file + target_ext)
             if not os.path.exists(target_file):
                 if feat is None:
                     feat = np.load(feat_file)
@@ -91,44 +110,42 @@ def prepare(files, compute_feat, compute_targets,
                 else:
                     num_frames = feat.num_frames
 
-                targets = compute_targets(neutral_file, num_frames, fps)
-                if targets is None:
-                    print('No ground truth for ' + neutral_file)
-                    continue
+                targets = compute_targets(gtf, num_frames, fps)
                 np.save(target_file, targets)
 
             target_files.append(target_file)
 
         feat_files.append(feat_file)
 
-    if compute_targets is not None:
+    if target_files is not None:
         return feat_files, target_files
     else:
         return feat_files
 
 
-def match_feature_and_target(files, feat_ext=FEAT_EXT, target_ext=TARGET_EXT):
+def match_files(files, first_ext, second_ext):
     """
-    Extracts from a list of file names the feature and matching target files
+    Extracts from a list of files files that have the same name but different
+    (but specified) extensions.
     :param files:       list of file names
-    :param feat_ext:    extension of feature files
-    :param target_ext:  extension of target files
-    :return:            a list of feature files and a list of matching target
-                        files
+    :param first_ext:   file extension of files to match
+    :param second_ext:  file extension of second files to match
+    :return:            two lists of files with same name but different
+                        extension
     """
-    feat_files = search_files(files, suffix=feat_ext)
-    target_files = []
+    first_files = search_files(files, suffix=first_ext)
+    second_files = []
 
-    for ff in feat_files:
-        matches = match_file(ff, files, feat_ext, target_ext)
+    for ff in first_files:
+        matches = match_file(ff, files, first_ext, second_ext)
         if len(matches) > 1:
-            raise SystemExit('Multiple target files for {}!'.format(ff))
+            raise SystemExit('Multiple matching files for {}!'.format(ff))
         elif len(matches) == 0:
-            raise SystemExit('No target files for {}!'.format(ff))
+            raise SystemExit('No matching files for {}!'.format(ff))
         else:
-            target_files.append(matches[0])
+            second_files.append(matches[0])
 
-    return feat_files, target_files
+    return first_files, second_files
 
 
 def random_split(files, split_perc=0.5):
