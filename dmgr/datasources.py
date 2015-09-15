@@ -1,5 +1,6 @@
 from itertools import izip, groupby
 from tempfile import TemporaryFile
+from collections import Iterable
 import numpy as np
 
 
@@ -364,10 +365,11 @@ class PreProcessedDataSource(object):
 
     def __init__(self, data_source, preprocessors):
         self.data_source = data_source
-        self.preprocessors = preprocessors
+        self.preprocessors = (preprocessors
+                              if isinstance(preprocessors, Iterable) else
+                              [preprocessors])
 
     def process(self, data):
-
         for pp in self.preprocessors:
             data = pp(data)
 
