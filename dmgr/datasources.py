@@ -55,8 +55,13 @@ class DataSource(object):
     def ttype(self):
         return self._targets.dtype
 
+    def __str__(self):
+        return '{}: N={}  dshape={}  tshape={}'.format(
+            self.__class__.__name__,
+            self.n_data, self.feature_shape, self.target_shape)
 
-class AggregatedDataSource(object):
+
+class AggregatedDataSource(DataSource):
 
     def __init__(self, data_sources, use_perc=1.0):
         assert len(data_sources) > 0, 'Need at least one data source'
@@ -129,9 +134,6 @@ class AggregatedDataSource(object):
     @property
     def n_data(self):
         return sum(ds.n_data for ds in self._data_sources)
-
-    def __len__(self):
-        return self.n_data
 
     @property
     def feature_shape(self):
@@ -259,7 +261,7 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
                                   dtype=signal.dtype)
 
 
-class ContextDataSource(object):
+class ContextDataSource(DataSource):
 
     def __init__(self, data, targets, context_size,
                  start=None, stop=None, step=None):
@@ -349,9 +351,6 @@ class ContextDataSource(object):
     def n_data(self):
         return self._n_data / self.step
 
-    def __len__(self):
-        return self.n_data
-
     @property
     def feature_shape(self):
         return self._data.shape[1:]
@@ -360,10 +359,53 @@ class ContextDataSource(object):
     def target_shape(self):
         return self._targets.shape[1:]
 
+
+class PreProcessedDataSource(object):
+
+    def __init__(self, data_source, preprocessors):
+        self.data_source = data_source
+        self.preprocessors = preprocessors
+
+    def process(self, data):
+
+        for pp in self.preprocessors:
+            data = pp(data)
+
+        return data
+
+    def save(self, data_file, target_file):
+        self.data_source.save(data_file, target_file)
+
+    def __getitem__(self, item):
+        data, targets = self.data_source[item]
+        return self.process(data), targets
+
+    @property
+    def n_data(self):
+        return self.data_source.n_data
+
+    def __len__(self):
+        return self.n_data
+
+    @property
+    def feature_shape(self):
+        return self.data_source.feature_shape
+
+    @property
+    def target_shape(self):
+        return self.data_source.target_shape
+
     @property
     def dtype(self):
-        return self._data.dtype
+        return self.data_source.dtype
 
     @property
     def ttype(self):
-        return self._targets.dtype
+        return self.data_source.ttype
+
+    def __str__(self):
+        return '{}: N={}  dshape={}  tshape={}  preproc={}'.format(
+            self.__class__.__name__,
+            self.n_data, self.feature_shape, self.target_shape,
+            self.preprocessors
+        )
