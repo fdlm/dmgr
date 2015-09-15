@@ -34,11 +34,9 @@ class DataWhitener(object):
         self.mean, self.std_dev = stats_batchwise(dataset, batch_size)
 
     def load(self, filename):
-        filename += '.whitening_params'
         with open(filename, 'r') as f:
             self.mean, self.std_dev = pickle.load(f)
 
     def save(self, filename):
-        filename += '.whitening_params'
         with open(filename, 'w') as f:
             pickle.dump((self.mean, self.std_dev), f)

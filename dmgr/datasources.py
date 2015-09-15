@@ -406,8 +406,9 @@ class PreProcessedDataSource(object):
         return self.data_source.ttype
 
     def __str__(self):
-        return '{}: N={}  dshape={}  tshape={}  preproc={}'.format(
+        preproc = ', '.join([str(pp) for pp in self.preprocessors])
+        return '{}: N={}  dshape={}  tshape={}  preproc=[{}]'.format(
             self.__class__.__name__,
             self.n_data, self.feature_shape, self.target_shape,
-            self.preprocessors
+            preproc
         )
