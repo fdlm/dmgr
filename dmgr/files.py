@@ -123,29 +123,35 @@ def prepare(source_files, ground_truth_files, dest_dir,
         return feat_files
 
 
-def match_files(files, first_ext, second_ext):
+def match_files_single(files, first_ext, second_ext):
+    first_files = search_files(files, suffix=first_ext)
+    second_files = search_files(files, suffix=second_ext)
+    return match_files(first_files, second_files, first_ext, second_ext)
+
+
+def match_files(first_files, second_files, first_ext, second_ext):
     """
-    Extracts from a list of files files that have the same name but different
-    (but specified) extensions.
-    :param files:       list of file names
+    Matches files from one list to files from a second list with same name
+    but different extension.
+    :param first_files: list of file names
+    :param second_files: list of file names
     :param first_ext:   file extension of files to match
     :param second_ext:  file extension of second files to match
-    :return:            two lists of files with same name but different
-                        extension
+    :return:            list of files from second_files that match the ones
+                        in the first_files list
     """
-    first_files = search_files(files, suffix=first_ext)
-    second_files = []
+    matched_second_files = []
 
     for ff in first_files:
-        matches = match_file(ff, files, first_ext, second_ext)
+        matches = match_file(ff, second_files, first_ext, second_ext)
         if len(matches) > 1:
             raise SystemExit('Multiple matching files for {}!'.format(ff))
         elif len(matches) == 0:
             raise SystemExit('No matching files for {}!'.format(ff))
         else:
-            second_files.append(matches[0])
+            matched_second_files.append(matches[0])
 
-    return first_files, second_files
+    return matched_second_files
 
 
 def random_split(files, split_perc=0.5):
