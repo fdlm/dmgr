@@ -184,18 +184,17 @@ def split(split_files, files, match_suffix=AUDIO_EXT):
             for fd in split_files]
 
 
-def predefined_train_val_test_split(files,
-                                    train_def, val_def=None, test_def=None,
+def predefined_train_val_test_split(files, val_def=None, test_def=None,
                                     match_suffix=AUDIO_EXT):
     """
     Splits a list of files into train, validation and test set based on
     file lists defined in text files. These text files contain one file name
     per line without file extension. If no file defining the validation
     set or test set are given, the function will return None for the
-    respective set
+    respective set. All files that are not defined as belonging to the
+    validation set or the test set will be automatically put into the train set.
 
     :param files:        total list of all files
-    :param train_def:    file containing the train set definition
     :param val_def:      file containing the validation set definition
     :param test_def:     file containing the test set definition
     :param match_suffix: suffix of the files in the total file list
@@ -203,20 +202,21 @@ def predefined_train_val_test_split(files,
                          and test set respectively (tuple)
     """
 
-    with open(train_def, 'r') as f:
-        train_files = split(f.read().splitlines(), files, match_suffix)
+    train_files = set(files)
 
     if val_def:
         with open(val_def, 'r') as f:
             val_files = split(f.read().splitlines(), files, match_suffix)
+        train_files.difference_update(set(val_files))
     else:
         val_files = None
 
     if test_def:
         with open(test_def, 'r') as f:
             test_files = split(f.read().splitlines(), files, match_suffix)
+        train_files.difference_update(set(test_files))
     else:
         test_files = None
 
-    return train_files, val_files, test_files
+    return list(train_files), val_files, test_files
 
