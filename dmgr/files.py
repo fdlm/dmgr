@@ -106,11 +106,8 @@ def prepare(source_files, ground_truth_files, dest_dir,
             if not os.path.exists(target_file):
                 if feat is None:
                     feat = np.load(feat_file)
-                    num_frames = feat.shape[0]
-                else:
-                    num_frames = feat.num_frames
 
-                targets = compute_targets(gtf, num_frames, fps)
+                targets = compute_targets(gtf, feat.shape[0], fps)
                 np.save(target_file, targets)
 
             target_files.append(target_file)
