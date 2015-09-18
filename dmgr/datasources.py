@@ -6,12 +6,16 @@ import numpy as np
 
 class DataSource(object):
 
-    def __init__(self, data, targets, start=None, stop=None, step=None):
+    def __init__(self, data, targets, start=None, stop=None, step=None,
+                 preprocessors=None):
+
         assert data.shape[0] == targets.shape[0], \
             'n_data = {}, n_targets = {}'.format(data.shape[0],
                                                  targets.shape[0])
         self._data = data[start:stop:step]
         self._targets = targets[start:stop:step]
+
+        self._preprocessors = preprocessors or []
 
         if self._data.ndim == 1:
             self._data = self._data[:, np.newaxis]
@@ -20,7 +24,7 @@ class DataSource(object):
             self._targets = self._targets[:, np.newaxis]
 
     @classmethod
-    def from_files(cls, data_file, target_file, memory_mapped=False,
+    def from_files(cls, data_file, target_file, memory_mapped=True,
                    *args, **kwargs):
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
@@ -30,8 +34,14 @@ class DataSource(object):
         np.save(data_file, self._data)
         np.save(target_file, self._targets)
 
-    def __getitem__(self, item):
-        return self._data[item], self._targets[item]
+    def _process(self, data):
+        for pp in self._preprocessors:
+            data = pp(data)
+
+        return data
+
+    def __getitem__(self, item_index):
+        return self._process(self._data[item_index]), self._targets[item_index]
 
     @property
     def n_data(self):
@@ -62,9 +72,9 @@ class DataSource(object):
             self.n_data, self.feature_shape, self.target_shape)
 
 
-class AggregatedDataSource(DataSource):
+class AggregatedDataSource(object):
 
-    def __init__(self, data_sources, use_perc=1.0):
+    def __init__(self, data_sources):
         assert len(data_sources) > 0, 'Need at least one data source'
         assert all(x.feature_shape == data_sources[0].feature_shape
                    for x in data_sources), \
@@ -74,16 +84,15 @@ class AggregatedDataSource(DataSource):
             'Data sources target dimensionality has to be equal'
 
         self._data_sources = data_sources
-        self._ds_ends = np.array(
-            [0] + [int(len(d) * use_perc) for d in data_sources]).cumsum()
+        self._ds_ends = np.array([0] + [len(d) for d in data_sources]).cumsum()
 
     @classmethod
     def from_files(cls, data_files, target_files, memory_mapped=False,
-                   data_source_type=DataSource, use_perc=1.0, **kwargs):
+                   data_source_type=DataSource, **kwargs):
         return cls(
             [data_source_type.from_files(d, t, memory_mapped=memory_mapped,
                                          **kwargs)
-             for d, t in izip(data_files, target_files)], use_perc=use_perc
+             for d, t in izip(data_files, target_files)]
         )
 
     def save(self, data_file, target_file):
@@ -129,12 +138,30 @@ class AggregatedDataSource(DataSource):
                 target_list.append(t)
 
             return np.vstack(data_list), np.vstack(target_list)
+        elif isinstance(item, slice):
+            return self[range(item.start or 0, item.stop or self.n_data,
+                              item.step or 1)]
         else:
-            raise TypeError('Only list and int indices supported')
+            raise TypeError('Index type {} not supported!'.format(type(item)))
+
+    def get_datasource(self, idx):
+        """
+        Gets a single DataSource
+        :param idx: index of the datasource
+        :return: datasource
+        """
+        return self._data_sources[idx]
+
+    @property
+    def n_datasources(self):
+        return len(self._data_sources)
 
     @property
     def n_data(self):
         return sum(ds.n_data for ds in self._data_sources)
+
+    def __len__(self):
+        return self.n_data
 
     @property
     def feature_shape(self):
@@ -151,6 +178,11 @@ class AggregatedDataSource(DataSource):
     @property
     def ttype(self):
         return self._data_sources[0].ttype
+
+    def __str__(self):
+        return '{}: N={}  dshape={}  tshape={}'.format(
+            self.__class__.__name__,
+            self.n_data, self.feature_shape, self.target_shape)
 
 
 # taken from: http://www.scipy.org/Cookbook/SegmentAxis
@@ -265,21 +297,19 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
 class ContextDataSource(DataSource):
 
     def __init__(self, data, targets, context_size,
-                 start=None, stop=None, step=None):
+                 start=None, stop=None, step=None, preprocessors=None):
 
-        if data.ndim == 1:
-            data = data[:, np.newaxis]
-        if targets.ndim == 1:
-            targets = targets[:, np.newaxis]
+        # step is taken care of in another way within this class. we thus
+        # pass 'None' to the parent
+        super(ContextDataSource, self).__init__(
+            data, targets, start=start, stop=stop, step=None,
+            preprocessors=preprocessors
+        )
 
-        data = data[start:stop]
-        targets = targets[start:stop]
         self.step = step or 1
 
-        frame_size = 1 + 2 * context_size
         self.context_size = context_size
-        self._data = segment_axis(data, frame_size, axis=0)
-        self._targets = targets
+        self._data = segment_axis(self._data, 1 + 2 * context_size, axis=0)
         self._n_data = data.shape[0]
 
         filler = np.zeros_like(data[0])
@@ -300,26 +330,39 @@ class ContextDataSource(DataSource):
                 self._begin_data.shape[0] + self._end_data.shape[0])
 
     @classmethod
-    def from_files(cls, data_file, target_file, context_size,
-                   memory_mapped=False, *args, **kwargs):
+    def from_files(cls, data_file, target_file, memory_mapped=True,
+                   *args, **kwargs):
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
-                   np.load(target_file, mmap_mode=mmap), context_size,
+                   np.load(target_file, mmap_mode=mmap),
                    *args, **kwargs)
 
     def __getitem__(self, item):
+
         if isinstance(item, int):
             item *= self.step
             if item < self.context_size:
-                return self._begin_data[item], self._targets[item]
+                return (self._process(self._begin_data[item]),
+                        self._targets[item])
             elif item >= self._n_data - self.context_size:
                 data_item = item - self._n_data + self.context_size
-                return self._end_data[data_item], self._targets[item]
+                return (self._process(self._end_data[data_item]),
+                        self._targets[item])
             else:
-                return self._data[item - self.context_size], self._targets[item]
+                return (self._process(self._data[item - self.context_size]),
+                        self._targets[item])
+
         elif isinstance(item, list):
+
             item = np.array(item) * self.step
-            item.sort()
+
+            # first sort the indices to be retrieved so we can get all the
+            # padded data and segmented data in one command
+            sort_idxs = item.argsort()
+            # remember how to un-sort the indices so we can restore the correct
+            # ordering in the end
+            revert_idxs = sort_idxs.argsort()
+            item = item[sort_idxs]
 
             gd_begin = np.searchsorted(item, self.context_size)
             gd_end = np.searchsorted(item, self._n_data - self.context_size - 1,
@@ -328,25 +371,33 @@ class ContextDataSource(DataSource):
             d = []
             t = []
 
-            if gd_begin < gd_end:
-                idxs = item[gd_begin:gd_end]
-                d.append(self._data[idxs - self.context_size])
-                t.append(self._targets[idxs])
-
+            # 0 padded begin data
             if gd_begin > 0:
                 idxs = item[:gd_begin]
-                d.append(self._begin_data[idxs])
+                d.append(self._process(self._begin_data[idxs]))
                 t.append(self._targets[idxs])
 
+            # segmented data
+            if gd_begin < gd_end:
+                idxs = item[gd_begin:gd_end]
+                d.append(self._process(self._data[idxs - self.context_size]))
+                t.append(self._targets[idxs])
+
+            # 0-padded end data
             if gd_end < item.shape[0]:
                 idxs = item[gd_end:]
-                d.append(self._end_data[idxs - self._n_data + self.context_size])
+                d.append(self._process(self._end_data[idxs - self._n_data +
+                                                      self.context_size]))
                 t.append(self._targets[idxs])
 
-            return np.vstack(d), np.vstack(t)
+            return np.vstack(d)[revert_idxs], np.vstack(t)[revert_idxs]
+
+        elif isinstance(item, slice):
+            return self[range(item.start or 0, item.stop or self.n_data,
+                              item.step or 1)]
 
         else:
-            raise TypeError('Only list and int indices supported')
+            raise TypeError('Index type {} not supported!'.format(type(item)))
 
     @property
     def n_data(self):
@@ -360,55 +411,3 @@ class ContextDataSource(DataSource):
     def target_shape(self):
         return self._targets.shape[1:]
 
-
-class PreProcessedDataSource(object):
-
-    def __init__(self, data_source, preprocessors):
-        self.data_source = data_source
-        self.preprocessors = (preprocessors
-                              if isinstance(preprocessors, Iterable) else
-                              [preprocessors])
-
-    def process(self, data):
-        for pp in self.preprocessors:
-            data = pp(data)
-
-        return data
-
-    def save(self, data_file, target_file):
-        self.data_source.save(data_file, target_file)
-
-    def __getitem__(self, item):
-        data, targets = self.data_source[item]
-        return self.process(data), targets
-
-    @property
-    def n_data(self):
-        return self.data_source.n_data
-
-    def __len__(self):
-        return self.n_data
-
-    @property
-    def feature_shape(self):
-        return self.data_source.feature_shape
-
-    @property
-    def target_shape(self):
-        return self.data_source.target_shape
-
-    @property
-    def dtype(self):
-        return self.data_source.dtype
-
-    @property
-    def ttype(self):
-        return self.data_source.ttype
-
-    def __str__(self):
-        preproc = ', '.join([str(pp) for pp in self.preprocessors])
-        return '{}: N={}  dshape={}  tshape={}  preproc=[{}]'.format(
-            self.__class__.__name__,
-            self.n_data, self.feature_shape, self.target_shape,
-            preproc
-        )
