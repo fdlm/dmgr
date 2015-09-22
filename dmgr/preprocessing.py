@@ -30,7 +30,7 @@ class DataWhitener(object):
     def __call__(self, data):
         return (data - self.mean) / self.std_dev
 
-    def train(self, dataset, batch_size=1024):
+    def train(self, dataset, batch_size=4096):
         self.mean, self.std_dev = stats_batchwise(dataset, batch_size)
 
     def load(self, filename):
@@ -40,3 +40,24 @@ class DataWhitener(object):
     def save(self, filename):
         with open(filename, 'w') as f:
             pickle.dump((self.mean, self.std_dev), f)
+
+
+class MaxNorm(object):
+
+    def __init__(self, max_val=1.):
+        self.max_val = max_val
+
+    def __call__(self, data):
+        return data / self.max_val
+
+    def train(self, dataset):
+        data, _ = dataset[:]
+        self.max_val = np.abs(data).max()
+
+    def load(self, filename):
+        with open(filename, 'r') as f:
+            self.max_val = pickle.load(f)
+
+    def save(self, filename):
+        with open(filename, 'w') as f:
+            pickle.dump(self.max_val, f)
