@@ -1,17 +1,18 @@
+from os.path import basename, splitext
 from itertools import izip, groupby
 from tempfile import TemporaryFile
-from collections import Iterable
 import numpy as np
 
 
 class DataSource(object):
 
     def __init__(self, data, targets, start=None, stop=None, step=None,
-                 preprocessors=None):
+                 preprocessors=None, name=None):
 
         assert data.shape[0] == targets.shape[0], \
             'n_data = {}, n_targets = {}'.format(data.shape[0],
                                                  targets.shape[0])
+        self.name = name
         self._data = data[start:stop:step]
         self._targets = targets[start:stop:step]
 
@@ -88,11 +89,15 @@ class AggregatedDataSource(object):
 
     @classmethod
     def from_files(cls, data_files, target_files, memory_mapped=False,
-                   data_source_type=DataSource, **kwargs):
+                   data_source_type=DataSource, names=None, **kwargs):
+
+        if not names:
+            names = [basename(d).split('.')[0] for d in data_files]
+
         return cls(
             [data_source_type.from_files(d, t, memory_mapped=memory_mapped,
-                                         **kwargs)
-             for d, t in izip(data_files, target_files)]
+                                         name=n, **kwargs)
+             for d, t, n in izip(data_files, target_files, names)]
         )
 
     def save(self, data_file, target_file):
@@ -297,13 +302,14 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
 class ContextDataSource(DataSource):
 
     def __init__(self, data, targets, context_size,
-                 start=None, stop=None, step=None, preprocessors=None):
+                 start=None, stop=None, step=None, preprocessors=None,
+                 name=None):
 
         # step is taken care of in another way within this class. we thus
         # pass 'None' to the parent
         super(ContextDataSource, self).__init__(
             data, targets, start=start, stop=stop, step=None,
-            preprocessors=preprocessors
+            preprocessors=preprocessors, name=name
         )
 
         self.step = step or 1
