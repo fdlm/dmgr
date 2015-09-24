@@ -8,7 +8,6 @@ def threaded(generator, num_cached=10):
     """
     import Queue
     queue = Queue.Queue(maxsize=num_cached)
-    queue = Queue.Queue(maxsize=num_cached)
     end_marker = object()
 
     # define producer
@@ -23,12 +22,15 @@ def threaded(generator, num_cached=10):
     thread.daemon = True
     thread.start()
 
-    # run as consumer
-    item = queue.get()
-    while item is not end_marker:
-        yield item
-        queue.task_done()
+    def consumer():
+        # run as consumer
         item = queue.get()
+        while item is not end_marker:
+            yield item
+            queue.task_done()
+            item = queue.get()
+
+    return consumer()
 
 
 def iterate_batches(data_source, batch_size, shuffle=False, expand=True):

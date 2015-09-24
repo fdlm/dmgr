@@ -75,7 +75,7 @@ class DataSource(object):
 
 class AggregatedDataSource(object):
 
-    def __init__(self, data_sources):
+    def __init__(self, data_sources, keep_order=False):
         assert len(data_sources) > 0, 'Need at least one data source'
         assert all(x.feature_shape == data_sources[0].feature_shape
                    for x in data_sources), \
@@ -86,6 +86,7 @@ class AggregatedDataSource(object):
 
         self._data_sources = data_sources
         self._ds_ends = np.array([0] + [len(d) for d in data_sources]).cumsum()
+        self.keep_order = keep_order
 
     @classmethod
     def from_files(cls, data_files, target_files, memory_mapped=False,
@@ -122,15 +123,19 @@ class AggregatedDataSource(object):
         return ds_idx, d_idx
 
     def __getitem__(self, item):
-        """
-        only list and int supported at the moment...
-        """
         if isinstance(item, int):
             ds_idx, d_idx = self._to_ds_idx(item)
             return self._data_sources[ds_idx][d_idx]
 
         elif isinstance(item, list):
-            item.sort()
+            if self.keep_order:
+                item = np.array(item)
+                sort_idxs = item.argsort()
+                item = item[sort_idxs]
+                revert_idxs = sort_idxs.argsort()
+            else:
+                item.sort()
+
             ds_idxs, d_idxs = self._to_ds_idx(item)
             data_list = []
             target_list = []
@@ -142,7 +147,15 @@ class AggregatedDataSource(object):
                 data_list.append(d)
                 target_list.append(t)
 
-            return np.vstack(data_list), np.vstack(target_list)
+            data = np.vstack(data_list)
+            targets = np.vstack(target_list)
+
+            if self.keep_order:
+                data = data[revert_idxs]
+                targets = targets[revert_idxs]
+
+            return data, targets
+
         elif isinstance(item, slice):
             return self[range(item.start or 0, item.stop or self.n_data,
                               item.step or 1)]
@@ -303,7 +316,7 @@ class ContextDataSource(DataSource):
 
     def __init__(self, data, targets, context_size,
                  start=None, stop=None, step=None, preprocessors=None,
-                 name=None):
+                 name=None, keep_order=False):
 
         # step is taken care of in another way within this class. we thus
         # pass 'None' to the parent
@@ -311,6 +324,8 @@ class ContextDataSource(DataSource):
             data, targets, start=start, stop=stop, step=None,
             preprocessors=preprocessors, name=name
         )
+
+        self.keep_order = keep_order
 
         self.step = step or 1
 
@@ -362,13 +377,16 @@ class ContextDataSource(DataSource):
 
             item = np.array(item) * self.step
 
-            # first sort the indices to be retrieved so we can get all the
-            # padded data and segmented data in one command
-            sort_idxs = item.argsort()
-            # remember how to un-sort the indices so we can restore the correct
-            # ordering in the end
-            revert_idxs = sort_idxs.argsort()
-            item = item[sort_idxs]
+            if self.keep_order:
+                # first sort the indices to be retrieved so we can get all the
+                # padded data and segmented data in one command
+                sort_idxs = item.argsort()
+                # remember how to un-sort the indices so we can restore the
+                # correct ordering in the end
+                revert_idxs = sort_idxs.argsort()
+                item = item[sort_idxs]
+            else:
+                item.sort()
 
             gd_begin = np.searchsorted(item, self.context_size)
             gd_end = np.searchsorted(item, self._n_data - self.context_size - 1,
@@ -396,7 +414,14 @@ class ContextDataSource(DataSource):
                                                       self.context_size]))
                 t.append(self._targets[idxs])
 
-            return np.vstack(d)[revert_idxs], np.vstack(t)[revert_idxs]
+            data = np.vstack(d)
+            targets = np.vstack(t)
+
+            if self.keep_order:
+                data = data[revert_idxs]
+                targets = targets[revert_idxs]
+
+            return data, targets
 
         elif isinstance(item, slice):
             return self[range(item.start or 0, item.stop or self.n_data,
