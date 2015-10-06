@@ -42,23 +42,22 @@ class Dataset:
 
         self.split_defs = split_defs
 
-    def get_fold_split(self, val_fold=0, test_fold=1):
+    def get_split(self, val_split_file, test_split_file):
         """
         Creates a file dictionary (as used by get_preprocessed_datasource),
-        where train, validation, and test folds are pre-defined in split
-        files.
-        :param val_fold:  index of validation fold
-        :param test_fold: index of test fold
-        :return: file dictionary
+        where validation and test folds are pre-defined in files
+        :param val_split_file:  file containing a list of files to use in the
+                                validation set
+        :param test_split_file: file containing a list of files to use in the
+                                test set
+        :return:                file dictionary
         """
-        if not self.split_defs:
-            raise RuntimeError('No cross-validation folds defined!')
 
         train_feat, val_feat, test_feat = \
             files.predefined_train_val_test_split(
                 self.feature_files,
-                self.split_defs[val_fold],
-                self.split_defs[test_fold],
+                val_split_file,
+                test_split_file,
                 match_suffix=files.FEAT_EXT
             )
 
@@ -78,6 +77,21 @@ class Dataset:
                         'targ': val_targ},
                 'test': {'feat': test_feat,
                          'targ': test_targ}}
+
+    def get_fold_split(self, val_fold=0, test_fold=1):
+        """
+        Creates a file dictionary (as used by get_preprocessed_datasource),
+        where train, validation, and test folds are pre-defined in split
+        files.
+        :param val_fold:  index of validation fold
+        :param test_fold: index of test fold
+        :return: file dictionary
+        """
+        if not self.split_defs:
+            raise RuntimeError('No cross-validation folds defined!')
+
+        return self.get_split(self.split_defs[val_fold],
+                              self.split_defs[test_fold])
 
     def get_rand_split(self, val_perc=0.2, test_perc=0.2,
                        random=np.random.RandomState(seed=0)):
