@@ -98,7 +98,7 @@ def prepare(source_files, ground_truth_files, dest_dir,
 
         feat = None
         if not os.path.exists(feat_file):
-            feat = compute_feat(sf)
+            feat = compute_feat(sf, fps)
             np.save(feat_file, feat)
 
         if gtf is not None:

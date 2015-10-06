@@ -442,3 +442,50 @@ class ContextDataSource(DataSource):
     def target_shape(self):
         return self._targets.shape[1:]
 
+
+def get_datasources(files, preprocessors, **kwargs):
+    """
+    This function creates datasources with given preprocessors given
+    a files dictionary. The dictionary looks as follows:
+
+    {'train': {'feat': [train feature files],
+               'targ': [train targets files]}
+     'val': {'feat': [validation feature files],
+             'targ': [validation target files]},
+     'test': {'feat': [test feature files],
+             'targ': [test target files]}
+    }
+
+    The preprocessors are trained on the training data.
+
+    :param files:         file dictionary with the aforementioned format
+    :param preprocessors: list of preprocessors to be applied to the data
+    :param kwargs:        additional arguments to be passed to
+                          AggregatedDataSource.from_files
+    :return:              tuple of train data source, validation data source
+                          and test data source
+    """
+    train_set = AggregatedDataSource.from_files(
+        files['train']['feat'], files['train']['targ'], memory_mapped=True,
+        preprocessors=preprocessors,
+        **kwargs
+    )
+
+    val_set = AggregatedDataSource.from_files(
+        files['val']['feat'], files['val']['targ'], memory_mapped=True,
+        preprocessors=preprocessors,
+        **kwargs
+    )
+
+    test_set = AggregatedDataSource.from_files(
+        files['test']['feat'], files['test']['targ'], memory_mapped=True,
+        preprocessors=preprocessors,
+        **kwargs
+    )
+
+    for p in preprocessors:
+        p.train(train_set)
+
+    return train_set, val_set, test_set
+
+
