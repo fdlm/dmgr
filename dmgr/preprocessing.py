@@ -21,6 +21,15 @@ def stats_batchwise(dataset, batch_size=1024):
     return mean, std
 
 
+def max_batchwise(dataset, batch_size=1024):
+    max_val = np.zeros(dataset.feature_shape, dtype=np.float32)
+
+    for x, _ in iterators.iterate_batches(dataset, batch_size, expand=True):
+        max_val = np.maximum(max_val, np.abs(x).max(axis=0))
+
+    return max_val
+
+
 class DataWhitener(object):
 
     def __init__(self, mean=0., std_dev=1.):
@@ -50,9 +59,8 @@ class MaxNorm(object):
     def __call__(self, data):
         return data / self.max_val
 
-    def train(self, dataset):
-        data, _ = dataset[:]
-        self.max_val = np.abs(data).max()
+    def train(self, dataset, batch_size=4096):
+        self.max_val = np.max(max_batchwise(dataset, batch_size))
 
     def load(self, filename):
         with open(filename, 'r') as f:
