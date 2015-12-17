@@ -483,8 +483,9 @@ def get_datasources(files, preprocessors, **kwargs):
         **kwargs
     )
 
-    for p in preprocessors:
-        p.train(train_set)
+    if preprocessors is not None:
+        for p in preprocessors:
+            p.train(train_set)
 
     return train_set, val_set, test_set
 
