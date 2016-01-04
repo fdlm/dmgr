@@ -73,6 +73,13 @@ def _chunks_to_arrays(data_chunks, target_chunks, max_len):
         data[i, :dlen] = data_chunks[i]
         targets[i, :dlen] = target_chunks[i]
         mask[i, :dlen] = 1.
+        # Repeat last valid value of data and targets throughout the whole
+        # masked area. This is consistent with the semantics of Lasagne's RNN
+        # implementation, which repeats the previous output value at every
+        # masked element. Also, Spaghetti (CRF Library) requires it to be this
+        # way.
+        data[i, dlen:] = data[i, dlen - 1]
+        targets[i, dlen:] = targets[i, dlen - 1]
 
     return data, mask, targets
 
