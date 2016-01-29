@@ -58,7 +58,7 @@ def expand(files_and_dirs, pattern):
 
 def prepare(source_files, ground_truth_files, dest_dir,
             compute_feat, compute_targets,
-            feat_ext=FEAT_EXT, target_ext=TARGET_EXT, fps=FPS):
+            feat_ext=FEAT_EXT, target_ext=TARGET_EXT):
     """
     Prepares features and targets for audio files. This function assumes that
     source and ground truth files are given in separate lists with matching
@@ -80,7 +80,6 @@ def prepare(source_files, ground_truth_files, dest_dir,
                              and computes the ground truth for it.
     :param feat_ext:         feature file extension
     :param target_ext:       target file extension.
-    :param fps:              frames per second
     :return:                 list of feature files, and if targets were
                              computed, a list of target files
     """
@@ -111,7 +110,7 @@ def prepare(source_files, ground_truth_files, dest_dir,
                 if feat is None:
                     feat = np.load(feat_file)
 
-                targets = compute_targets(gtf, feat.shape[0], fps)
+                targets = compute_targets(gtf, feat.shape[0], compute_feat.fps)
                 np.save(target_file, targets)
 
             target_files.append(target_file)

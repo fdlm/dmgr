@@ -8,7 +8,7 @@ class Dataset:
     """
 
     def __init__(self, data_dir, feature_cache_dir, split_defs,
-                 source_ext, gt_ext, compute_features, compute_targets, fps):
+                 source_ext, gt_ext, compute_features, compute_targets):
         """
         Initialises the dataset class
         :param data_dir:          dataset base directory
@@ -22,7 +22,6 @@ class Dataset:
         :param compute_targets:   function that computes the targets given
                                   a target file, number of frames and frames
                                   per second
-        :param fps:               frames per second
         """
 
         src_files = files.expand(data_dir, '*' + source_ext)
@@ -33,7 +32,6 @@ class Dataset:
             src_files, gt_files, feature_cache_dir,
             compute_feat=compute_features,
             compute_targets=compute_targets,
-            fps=fps
         )
 
         self.feature_files = feat_files
