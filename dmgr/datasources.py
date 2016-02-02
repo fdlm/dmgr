@@ -443,7 +443,7 @@ class ContextDataSource(DataSource):
         return self._targets.shape[1:]
 
 
-def get_datasources(files, preprocessors, **kwargs):
+def get_datasources(files, preprocessors=None, **kwargs):
     """
     This function creates datasources with given preprocessors given
     a files dictionary. The dictionary looks as follows:
