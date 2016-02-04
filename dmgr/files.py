@@ -95,6 +95,10 @@ def prepare(source_files, ground_truth_files, dest_dir,
     if not os.path.exists(feat_cache_path):
         os.makedirs(feat_cache_path)
 
+    target_cache_path = os.path.join(dest_dir, compute_targets.name)
+    if not os.path.exists(target_cache_path):
+        os.makedirs(target_cache_path)
+
     for sf, gtf in zip(source_files, ground_truth_files):
         neutral_file = os.path.splitext(os.path.basename(sf))[0]
         feat_file = os.path.join(feat_cache_path, neutral_file + feat_ext)
@@ -105,12 +109,13 @@ def prepare(source_files, ground_truth_files, dest_dir,
             np.save(feat_file, feat)
 
         if gtf is not None:
-            target_file = os.path.join(dest_dir, neutral_file + target_ext)
+            target_file = os.path.join(target_cache_path,
+                                       neutral_file + target_ext)
             if not os.path.exists(target_file):
                 if feat is None:
                     feat = np.load(feat_file)
 
-                targets = compute_targets(gtf, feat.shape[0], compute_feat.fps)
+                targets = compute_targets(gtf, feat.shape[0])
                 np.save(target_file, targets)
 
             target_files.append(target_file)
