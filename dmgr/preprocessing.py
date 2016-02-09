@@ -30,7 +30,7 @@ def max_batchwise(dataset, batch_size=1024):
     return max_val
 
 
-class DataWhitener(object):
+class ZeroMeanUnitVar(object):
 
     def __init__(self, mean=0., std_dev=1.):
         self.mean = mean
@@ -69,3 +69,24 @@ class MaxNorm(object):
     def save(self, filename):
         with open(filename, 'w') as f:
             pickle.dump(self.max_val, f)
+
+
+class PcaWhitening(object):
+
+    def __init__(self):
+        from sklearn.decomposition import PCA
+        self.pca = PCA(whiten=True)
+
+    def __call__(self, data):
+        return self.pca.transform(data)
+
+    def train(self, dataset):
+        self.pca.fit(dataset)
+
+    def load(self, filename):
+        with open(filename, 'r') as f:
+            self.pca.set_params(pickle.load(f))
+
+    def save(self, filename):
+        with open(filename, 'w') as f:
+            pickle.dump(self.pca.get_params(deep=True), f)
