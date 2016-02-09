@@ -74,14 +74,29 @@ class MaxNorm(object):
 class PcaWhitening(object):
 
     def __init__(self):
-        from sklearn.decomposition import PCA
-        self.pca = PCA(whiten=True)
+        self.pca = None
 
     def __call__(self, data):
-        return self.pca.transform(data)
+        if self.pca is not None:
+            # flatten features, pca only works on 1d arrays
+            data_shape = data.shape
+            data_flat = data.reshape((data_shape[0], -1))
+            whitened_data = self.pca.transform(data_flat)
+            # get back original shape
+            return whitened_data.reshape(data_shape).astype(np.float32)
+        else:
+            return data
 
-    def train(self, dataset):
-        self.pca.fit(dataset)
+    def train(self, dataset, batch_size=4096):
+        from sklearn.decomposition import IncrementalPCA as IPCA
+        data = dataset[:][0]  # ignore the labels
+        data_shape = data.shape
+        print data_shape
+        data_flat = data.reshape((data_shape[0], -1))  # flatten features
+        self.pca = IPCA(whiten=True,
+                        batch_size=batch_size,
+                        n_components=data_flat.shape[1])
+        self.pca.fit(data_flat)
 
     def load(self, filename):
         with open(filename, 'r') as f:
