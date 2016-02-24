@@ -73,8 +73,15 @@ class MaxNorm(object):
 
 class PcaWhitening(object):
 
-    def __init__(self):
+    def __init__(self, n_train_vectors=None, n_components=None):
+        """
+        Data whitening using PCA
+        :param n_train_vectors: max number of feature vectors used for
+                                training. 'None' means 'use all vectors'
+        """
         self.pca = None
+        self.n_train_vectors = n_train_vectors
+        self.n_components = n_components
 
     def __call__(self, data):
         if self.pca is not None:
@@ -88,14 +95,18 @@ class PcaWhitening(object):
             return data
 
     def train(self, dataset, batch_size=4096):
-        from sklearn.decomposition import IncrementalPCA as IPCA
-        data = dataset[:][0]  # ignore the labels
-        data_shape = data.shape
-        print data_shape
-        data_flat = data.reshape((data_shape[0], -1))  # flatten features
-        self.pca = IPCA(whiten=True,
-                        batch_size=batch_size,
-                        n_components=data_flat.shape[1])
+        from sklearn.decomposition import PCA
+        # select a random subset of the data if self.n_train_vectors is not
+        # None
+        if self.n_train_vectors is not None:
+            sel_data = list(np.random.choice(dataset.n_data,
+                                             size=self.n_train_vectors,
+                                             replace=False))
+        else:
+            sel_data = slice(None)
+        data = dataset[sel_data][0]  # ignore the labels
+        data_flat = data.reshape((data.shape[0], -1))  # flatten features
+        self.pca = PCA(whiten=True, n_components=self.n_components)
         self.pca.fit(data_flat)
 
     def load(self, filename):
