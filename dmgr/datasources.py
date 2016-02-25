@@ -2,6 +2,7 @@ from os.path import basename, splitext
 from itertools import izip, groupby
 from tempfile import TemporaryFile
 import numpy as np
+from .iterators import iterate_batches
 
 
 class DataSource(object):
@@ -443,7 +444,7 @@ class ContextDataSource(DataSource):
         return self._targets.shape[1:]
 
 
-def get_datasources(files, preprocessors=None, **kwargs):
+def get_datasources(files, preprocessors=None, cached=False, **kwargs):
     """
     This function creates datasources with given preprocessors given
     a files dictionary. The dictionary looks as follows:
@@ -487,6 +488,42 @@ def get_datasources(files, preprocessors=None, **kwargs):
         for p in preprocessors:
             p.train(train_set)
 
+    if cached:
+        print "Caching..."
+        train_set = cache_aggregated_datasource(train_set)
+        test_set = cache_aggregated_datasource(test_set)
+        val_set = cache_aggregated_datasource(val_set)
+        print " done!"
+
     return train_set, val_set, test_set
 
 
+def cache_datasource(datasource, batch_size=8192, cache_dir=None):
+    from tempfile import NamedTemporaryFile
+
+    f_cache = NamedTemporaryFile(suffix='.npz', dir=cache_dir)
+    t_cache = NamedTemporaryFile(suffix='.npz', dir=cache_dir)
+    f_shape = (datasource.n_data,) + datasource.feature_shape
+    t_shape = (datasource.n_data,) + datasource.target_shape
+
+    features = np.memmap(f_cache, dtype=datasource.dtype, shape=f_shape)
+    targets = np.memmap(t_cache, dtype=datasource.ttype, shape=t_shape)
+
+    i = 0
+    for f, t in iterate_batches(datasource, batch_size=batch_size,
+                                shuffle=False, expand=False):
+        features[i:i + f.shape[0]] = f
+        targets[i:i + t.shape[0]] = t
+        i += f.shape[0]
+
+    return DataSource(features, targets, name=datasource.name)
+
+
+def cache_aggregated_datasource(agg_datasource, batch_size=8192,
+                                cache_dir=None):
+    datasources = [agg_datasource.get_datasource(i)
+                   for i in range(agg_datasource.n_datasources)]
+    cached_ds = [cache_datasource(ds, batch_size, cache_dir)
+                 for ds in datasources]
+    return AggregatedDataSource(cached_ds,
+                                keep_order=agg_datasource.keep_order)
