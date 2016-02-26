@@ -489,11 +489,9 @@ def get_datasources(files, preprocessors=None, cached=False, **kwargs):
             p.train(train_set)
 
     if cached:
-        print "Caching..."
         train_set = cache_aggregated_datasource(train_set)
         test_set = cache_aggregated_datasource(test_set)
         val_set = cache_aggregated_datasource(val_set)
-        print " done!"
 
     return train_set, val_set, test_set
 
