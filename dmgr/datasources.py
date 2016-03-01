@@ -444,7 +444,8 @@ class ContextDataSource(DataSource):
         return self._targets.shape[1:]
 
 
-def get_datasources(files, preprocessors=None, cached=False, **kwargs):
+def get_datasources(files, preprocessors=None, cached=False, cache_dir=None,
+                    **kwargs):
     """
     This function creates datasources with given preprocessors given
     a files dictionary. The dictionary looks as follows:
@@ -461,6 +462,8 @@ def get_datasources(files, preprocessors=None, cached=False, **kwargs):
 
     :param files:         file dictionary with the aforementioned format
     :param preprocessors: list of preprocessors to be applied to the data
+    :param cached:        cache datasources
+    :param cache_dir:     where to cache datasources
     :param kwargs:        additional arguments to be passed to
                           AggregatedDataSource.from_files
     :return:              tuple of train data source, validation data source
@@ -489,9 +492,9 @@ def get_datasources(files, preprocessors=None, cached=False, **kwargs):
             p.train(train_set)
 
     if cached:
-        train_set = cache_aggregated_datasource(train_set)
-        test_set = cache_aggregated_datasource(test_set)
-        val_set = cache_aggregated_datasource(val_set)
+        train_set = cache_aggregated_datasource(train_set, cache_dir=cache_dir)
+        test_set = cache_aggregated_datasource(test_set, cache_dir=cache_dir)
+        val_set = cache_aggregated_datasource(val_set, cache_dir=cache_dir)
 
     return train_set, val_set, test_set
 
