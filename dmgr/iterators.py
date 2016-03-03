@@ -33,7 +33,9 @@ def threaded(generator, num_cached=10):
     return consumer()
 
 
-def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
+def iterate_batches(data_source, batch_size, shuffle=False, expand=True,
+                    add_time_dim=False):
+
     idxs = range(data_source.n_data)
 
     if shuffle:
@@ -50,7 +52,15 @@ def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
             batch_idxs += random.sample(idxs[:start_idx], n_missing)
 
         start_idx += batch_size
-        yield data_source[batch_idxs]
+
+        if add_time_dim:
+            d, t = data_source[batch_idxs]
+            new_dshape = (d.shape[0], 1) + d.shape[1:]
+            new_tshape = (t.shape[0], 1) + t.shape[1:]
+            yield d.reshape(new_dshape), t.reshape(new_tshape)
+
+        else:
+            yield data_source[batch_idxs]
 
 
 def _chunks_to_arrays(data_chunks, target_chunks, max_len):
