@@ -5,8 +5,6 @@ import fnmatch
 
 import numpy as np
 
-from madmom.utils import match_file, search_files
-
 AUDIO_EXT = '.flac'
 FEAT_EXT = '.features.npy'
 TARGET_EXT = '.targets.npy'
@@ -128,31 +126,30 @@ def prepare(source_files, ground_truth_files, dest_dir,
         return feat_files
 
 
-def match_files_single(files, first_ext, second_ext):
-    first_files = search_files(files, suffix=first_ext)
-    second_files = search_files(files, suffix=second_ext)
-    return match_files(first_files, second_files, first_ext, second_ext)
-
-
-def match_files(first_files, second_files, first_ext, second_ext):
+def match_files(files, ext, matching_files, matching_ext):
     """
-    Matches files from one list to files from a second list with same name
-    but different extension.
-    :param first_files: list of file names
-    :param second_files: list of file names
-    :param first_ext:   file extension of files to match
-    :param second_ext:  file extension of second files to match
-    :return:            list of files from second_files that match the ones
-                        in the first_files list
+    Finds matching files in two lists, ignoring extensions.
+    :param files:  list of file names to find matches for
+    :param ext:    file extension of files to find matches for
+    :param matching_files: list of file names to matches
+    :param matching_ext:   file extension of second files to match
+    :return:               list of files from second_files that match the ones
+                           in the first_files list
     """
     matched_second_files = []
 
-    for ff in first_files:
-        matches = match_file(ff, second_files, first_ext, second_ext)
+    def strip_ext(fn, e):
+        return fn[:-len(e)] if fn.endswith(e) else fn
+
+    for f in files:
+        if len(ext) > 0:
+            f = strip_ext(f, ext)
+        matches = fnmatch.filter(matching_files, f + matching_ext)
         if len(matches) > 1:
-            raise SystemExit('Multiple matching files for {}!'.format(ff))
+            raise SystemExit('Multiple matching '
+                             'files for {}: {}'.format(f, matches))
         elif len(matches) == 0:
-            raise SystemExit('No matching files for {}!'.format(ff))
+            raise SystemExit('No matching files for {}!'.format(f))
         else:
             matched_second_files.append(matches[0])
 
@@ -166,27 +163,10 @@ def random_split(files, split_perc=0.5):
     :param split_perc: percentage of files to be contained in first set
     :return:           two lists of files split
     """
+    files = list(files)
     random.shuffle(files)
-
-    split_perc = split_perc
-    n_train = int(len(files) * split_perc)
-
-    train_files = files[:n_train]
-    val_files = files[n_train:]
-
-    return train_files, val_files
-
-
-def split(split_files, files, match_suffix=AUDIO_EXT):
-    """
-    Splits files based on a predefined list of file names
-    :param split_files:  names of files to be contained in split (without ext)
-    :param files:        list of files (with extension)
-    :param match_suffix: file extension in 'files' list
-    :return:
-    """
-    return [match_file(fd, files, match_suffix=match_suffix)[0]
-            for fd in split_files]
+    n_split = int(len(files) * split_perc)
+    return files[:n_split], files[n_split:]
 
 
 def predefined_train_val_test_split(files, val_def=None, test_def=None,
@@ -211,14 +191,16 @@ def predefined_train_val_test_split(files, val_def=None, test_def=None,
 
     if val_def:
         with open(val_def, 'r') as f:
-            val_files = split(f.read().splitlines(), files, match_suffix)
+            val_files = match_files(f.read().splitlines(), '',
+                                    files, match_suffix)
         train_files.difference_update(set(val_files))
     else:
         val_files = None
 
     if test_def:
         with open(test_def, 'r') as f:
-            test_files = split(f.read().splitlines(), files, match_suffix)
+            test_files = match_files(f.read().splitlines(), '',
+                                     files, match_suffix)
         train_files.difference_update(set(test_files))
     else:
         test_files = None

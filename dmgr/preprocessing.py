@@ -1,8 +1,5 @@
 import numpy as np
 import pickle
-from scipy import linalg
-from sklearn.utils import as_float_array
-from sklearn.base import TransformerMixin, BaseEstimator
 
 from . import iterators
 
@@ -99,6 +96,7 @@ class PcaWhitening(object):
 
     def train(self, dataset, batch_size=4096):
         from sklearn.decomposition import PCA
+
         # select a random subset of the data if self.n_train_vectors is not
         # None
         if self.n_train_vectors is not None:
@@ -121,74 +119,28 @@ class PcaWhitening(object):
             pickle.dump(self.pca.get_params(deep=True), f)
 
 
-class ZCA(BaseEstimator, TransformerMixin):
-    """
-    Compute ZCA whitening
-    """
-
-    def __init__(self, regularization=10**-5, copy=True):
-        """
-        Constructor
-        """
-        self.regularization = regularization
-        self.copy = copy
-
-    def fit(self, X, y=None):
-        """
-        Compute whitening transform
-        """
-        print "Fitting Whitening Transform ..."
-        X = np.reshape(X, (X.shape[0], -1))
-        X = as_float_array(X, copy=self.copy)
-
-        # center data
-        self.mean_ = np.mean(X, axis=0)
-        X -= self.mean_
-
-        # compute covmat
-        # X_t = T.matrix('x')
-        # sigma_t = T.dot(X_t.T, X_t) / (X.shape[1] - 1)
-        # compute_sigma = theano.function([X_t], sigma_t)
-        print "  Computing Covariance Matrix ..."
-        sigma = np.dot(X.T, X) / (X.shape[1] - 1)
-        # sigma = compute_sigma(X)
-
-        # compute svd
-        print "  Computing SVD ..."
-        U, S, V = linalg.svd(sigma)
-
-        # compute whitening transform
-        print "  Compiling Transformation Matrix ..."
-        tmp = np.dot(U, np.diag(1.0 / np.sqrt(S + self.regularization)))
-        self.components_ = np.dot(tmp, U.T)
-
-        print "  Done!"
-        return self
-
-    def transform(self, X):
-        """
-        Transform data
-        """
-        orig_shape = X.shape
-        X = np.reshape(X, (X.shape[0], -1))
-        X_transformed = X - self.mean_
-        X_transformed = np.dot(X_transformed, self.components_.T)
-        return X_transformed.reshape(orig_shape)
-
-
 class ZcaWhitening(object):
 
-    def __init__(self, n_train_vectors=None):
+    def __init__(self, regularisation, n_train_vectors=None):
         """
         Data whitening using ZCA
+        :param regularisation:  regularisation parameter (surprise!)
         :param n_train_vectors: max number of feature vectors used for
                                 training. 'None' means 'use all vectors'
         """
-        self.zca = None
+        self.mean = None
+        self.components = None
+        self.regularisation = regularisation
         self.n_train_vectors = n_train_vectors
 
     def __call__(self, data):
-        return self.zca.transform(data) if self.zca is not None else data
+
+        if self.components is None:
+            return data
+
+        orig_shape = data.shape
+        data = np.reshape(data, (data.shape[0], -1))
+        return np.dot(data - self.mean, self.components.T).reshape(orig_shape)
 
     def train(self, dataset, batch_size=4096):
         if self.n_train_vectors is not None:
@@ -198,6 +150,24 @@ class ZcaWhitening(object):
         else:
             sel_data = slice(None)
 
-        data = dataset[sel_data][0]
-        self.zca = ZCA()
-        self.zca.fit(data)
+        from scipy import linalg
+        from sklearn.utils import as_float_array
+
+        x = dataset[sel_data]
+        x = np.reshape(x, (x.shape[0], -1))
+        x = as_float_array(x, copy=True)
+
+        # center data
+        self.mean = np.mean(x, axis=0)
+        x -= self.mean
+
+        # compute covariance matrix
+        sigma = np.dot(x.T, x) / (x.shape[1] - 1)
+
+        # compute svd
+        u, s, _ = linalg.svd(sigma)
+
+        # compute whitening transform
+        tmp = np.dot(u, np.diag(1.0 / np.sqrt(s + self.regularisation)))
+        self.components = np.dot(tmp, u.T)
+

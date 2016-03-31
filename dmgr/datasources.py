@@ -74,136 +74,6 @@ class DataSource(object):
             self.n_data, self.feature_shape, self.target_shape)
 
 
-class AggregatedDataSource(object):
-
-    def __init__(self, data_sources, keep_order=False):
-        assert len(data_sources) > 0, 'Need at least one data source'
-        assert all(x.feature_shape == data_sources[0].feature_shape
-                   for x in data_sources), \
-            'Data sources dimensionality has to be equal'
-        assert all(x.target_shape == data_sources[0].target_shape
-                   for x in data_sources), \
-            'Data sources target dimensionality has to be equal'
-
-        self._data_sources = data_sources
-        self._ds_ends = np.array([0] + [len(d) for d in data_sources]).cumsum()
-        self.keep_order = keep_order
-
-    @classmethod
-    def from_files(cls, data_files, target_files, memory_mapped=False,
-                   data_source_type=DataSource, names=None, **kwargs):
-
-        if not names:
-            names = [basename(d).split('.')[0] for d in data_files]
-
-        return cls(
-            [data_source_type.from_files(d, t, memory_mapped=memory_mapped,
-                                         name=n, **kwargs)
-             for d, t, n in izip(data_files, target_files, names)]
-        )
-
-    def save(self, data_file, target_file):
-
-        with TemporaryFile() as data_tmp, TemporaryFile() as target_temp:
-            data_shape = (self.n_data,) + self.feature_shape
-            df = np.memmap(data_tmp, shape=data_shape, dtype=self.dtype)
-            target_shape = (self.n_data,) + self.target_shape
-            tf = np.memmap(target_temp, shape=target_shape, dtype=self.ttype)
-
-            for i in range(self.n_data):
-                d, t = self[i]
-                df[i] = d
-                tf[i] = t
-
-            np.save(data_file, df)
-            np.save(target_file, tf)
-
-    def _to_ds_idx(self, idx):
-        ds_idx = self._ds_ends.searchsorted(idx, side='right') - 1
-        d_idx = idx - self._ds_ends[ds_idx]
-        return ds_idx, d_idx
-
-    def __getitem__(self, item):
-        if isinstance(item, int):
-            ds_idx, d_idx = self._to_ds_idx(item)
-            return self._data_sources[ds_idx][d_idx]
-
-        elif isinstance(item, list):
-            if self.keep_order:
-                item = np.array(item)
-                sort_idxs = item.argsort()
-                item = item[sort_idxs]
-                revert_idxs = sort_idxs.argsort()
-            else:
-                item.sort()
-
-            ds_idxs, d_idxs = self._to_ds_idx(item)
-            data_list = []
-            target_list = []
-
-            for ds_idx, d_idx_iter in groupby(enumerate(d_idxs),
-                                              lambda i: ds_idxs[i[0]]):
-                d_idx = [di[1] for di in d_idx_iter]
-                d, t = self._data_sources[ds_idx][d_idx]
-                data_list.append(d)
-                target_list.append(t)
-
-            data = np.vstack(data_list)
-            targets = np.vstack(target_list)
-
-            if self.keep_order:
-                data = data[revert_idxs]
-                targets = targets[revert_idxs]
-
-            return data, targets
-
-        elif isinstance(item, slice):
-            return self[range(item.start or 0, item.stop or self.n_data,
-                              item.step or 1)]
-        else:
-            raise TypeError('Index type {} not supported!'.format(type(item)))
-
-    def get_datasource(self, idx):
-        """
-        Gets a single DataSource
-        :param idx: index of the datasource
-        :return: datasource
-        """
-        return self._data_sources[idx]
-
-    @property
-    def n_datasources(self):
-        return len(self._data_sources)
-
-    @property
-    def n_data(self):
-        return sum(ds.n_data for ds in self._data_sources)
-
-    def __len__(self):
-        return self.n_data
-
-    @property
-    def feature_shape(self):
-        return self._data_sources[0].feature_shape
-
-    @property
-    def target_shape(self):
-        return self._data_sources[0].target_shape
-
-    @property
-    def dtype(self):
-        return self._data_sources[0].dtype
-
-    @property
-    def ttype(self):
-        return self._data_sources[0].ttype
-
-    def __str__(self):
-        return '{}: N={}  dshape={}  tshape={}'.format(
-            self.__class__.__name__,
-            self.n_data, self.feature_shape, self.target_shape)
-
-
 # taken from: http://www.scipy.org/Cookbook/SegmentAxis
 def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
                  end_value=0):
@@ -442,6 +312,136 @@ class ContextDataSource(DataSource):
     @property
     def target_shape(self):
         return self._targets.shape[1:]
+
+
+class AggregatedDataSource(object):
+
+    def __init__(self, data_sources, keep_order=False):
+        assert len(data_sources) > 0, 'Need at least one data source'
+        assert all(x.feature_shape == data_sources[0].feature_shape
+                   for x in data_sources), \
+            'Data sources dimensionality has to be equal'
+        assert all(x.target_shape == data_sources[0].target_shape
+                   for x in data_sources), \
+            'Data sources target dimensionality has to be equal'
+
+        self._data_sources = data_sources
+        self._ds_ends = np.array([0] + [len(d) for d in data_sources]).cumsum()
+        self.keep_order = keep_order
+
+    @classmethod
+    def from_files(cls, data_files, target_files, memory_mapped=False,
+                   data_source_type=DataSource, names=None, **kwargs):
+
+        if not names:
+            names = [basename(d).split('.')[0] for d in data_files]
+
+        return cls(
+            [data_source_type.from_files(d, t, memory_mapped=memory_mapped,
+                                         name=n, **kwargs)
+             for d, t, n in izip(data_files, target_files, names)]
+        )
+
+    def save(self, data_file, target_file):
+
+        with TemporaryFile() as data_tmp, TemporaryFile() as target_temp:
+            data_shape = (self.n_data,) + self.feature_shape
+            df = np.memmap(data_tmp, shape=data_shape, dtype=self.dtype)
+            target_shape = (self.n_data,) + self.target_shape
+            tf = np.memmap(target_temp, shape=target_shape, dtype=self.ttype)
+
+            for i in range(self.n_data):
+                d, t = self[i]
+                df[i] = d
+                tf[i] = t
+
+            np.save(data_file, df)
+            np.save(target_file, tf)
+
+    def _to_ds_idx(self, idx):
+        ds_idx = self._ds_ends.searchsorted(idx, side='right') - 1
+        d_idx = idx - self._ds_ends[ds_idx]
+        return ds_idx, d_idx
+
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            ds_idx, d_idx = self._to_ds_idx(item)
+            return self._data_sources[ds_idx][d_idx]
+
+        elif isinstance(item, list):
+            if self.keep_order:
+                item = np.array(item)
+                sort_idxs = item.argsort()
+                item = item[sort_idxs]
+                revert_idxs = sort_idxs.argsort()
+            else:
+                item.sort()
+
+            ds_idxs, d_idxs = self._to_ds_idx(item)
+            data_list = []
+            target_list = []
+
+            for ds_idx, d_idx_iter in groupby(enumerate(d_idxs),
+                                              lambda i: ds_idxs[i[0]]):
+                d_idx = [di[1] for di in d_idx_iter]
+                d, t = self._data_sources[ds_idx][d_idx]
+                data_list.append(d)
+                target_list.append(t)
+
+            data = np.vstack(data_list)
+            targets = np.vstack(target_list)
+
+            if self.keep_order:
+                data = data[revert_idxs]
+                targets = targets[revert_idxs]
+
+            return data, targets
+
+        elif isinstance(item, slice):
+            return self[range(item.start or 0, item.stop or self.n_data,
+                              item.step or 1)]
+        else:
+            raise TypeError('Index type {} not supported!'.format(type(item)))
+
+    def get_datasource(self, idx):
+        """
+        Gets a single DataSource
+        :param idx: index of the datasource
+        :return: datasource
+        """
+        return self._data_sources[idx]
+
+    @property
+    def n_datasources(self):
+        return len(self._data_sources)
+
+    @property
+    def n_data(self):
+        return sum(ds.n_data for ds in self._data_sources)
+
+    def __len__(self):
+        return self.n_data
+
+    @property
+    def feature_shape(self):
+        return self._data_sources[0].feature_shape
+
+    @property
+    def target_shape(self):
+        return self._data_sources[0].target_shape
+
+    @property
+    def dtype(self):
+        return self._data_sources[0].dtype
+
+    @property
+    def ttype(self):
+        return self._data_sources[0].ttype
+
+    def __str__(self):
+        return '{}: N={}  dshape={}  tshape={}'.format(
+            self.__class__.__name__,
+            self.n_data, self.feature_shape, self.target_shape)
 
 
 def get_datasources(files, preprocessors=None, cached=False, cache_dir=None,
