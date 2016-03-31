@@ -95,14 +95,14 @@ def _chunks_to_arrays(data_chunks, target_chunks, max_len):
 
 
 def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
-                        expand=True, sequence_length=None):
+                        expand=True, max_seq_len=None):
     """
     Iterates datasource-wise over an aggragated datasource.
     :param aggregated_data_source: AggragatedDatasource object
     :param batch_size:             number of sequences per batch
     :param shuffle:                shuffle datasources
     :param expand:                 fill up last batch
-    :param sequence_length:        maximum sequence length. cuts data from one
+    :param max_seq_len:        maximum sequence length. cuts data from one
                                    data source into chucks of max this length.
                                    If None, use total length of each data source
     :return:                       data of data sources, mask
@@ -116,12 +116,12 @@ def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
 
     data_chunks = []
     target_chunks = []
-    max_len = sequence_length or 0
+    max_len = max_seq_len or 0
 
     for ds_idx in ds_idxs:
         ds = aggregated_data_source.get_datasource(ds_idx)
         # we chunk the data according to sequence_length
-        for d, t in iterate_batches(ds, sequence_length or ds.n_data,
+        for d, t in iterate_batches(ds, max_seq_len or ds.n_data,
                                     shuffle=False, expand=False):
             data_chunks.append(d)
             target_chunks.append(t)
@@ -131,7 +131,7 @@ def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
                 yield _chunks_to_arrays(data_chunks, target_chunks, max_len)
                 data_chunks = []
                 target_chunks = []
-                max_len = sequence_length or 0
+                max_len = max_seq_len or 0
 
     # after we processed all data sources, there might be some chunks left.
     while expand and len(data_chunks) < batch_size:
@@ -139,7 +139,7 @@ def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
         # get a random data source
         ds_idx = random.sample(ds_idxs, 1)[0]
         ds = aggregated_data_source.get_datasource(ds_idx)
-        for d, t in iterate_batches(ds, sequence_length or ds.n_data,
+        for d, t in iterate_batches(ds, max_seq_len or ds.n_data,
                                     shuffle=False, expand=False):
             data_chunks.append(d)
             target_chunks.append(t)
