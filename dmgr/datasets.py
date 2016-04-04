@@ -3,6 +3,28 @@ import numpy as np
 from . import files
 
 
+def name_callable(func, name):
+    """
+    Attaches a name to a callable.
+
+    Parameters
+    ----------
+    func : callable
+        The callable to attach the name to
+    name : str
+        Name to attach to the callable
+
+    Returns
+    -------
+    Function with `name` attribute
+
+    """
+    def fn(*args, **kwargs):
+        return func(*args, **kwargs)
+    fn.name = name
+    return fn
+
+
 class Dataset:
     """
     The Dataset class prepares and manages features and targets for a data set.
@@ -12,24 +34,33 @@ class Dataset:
     in the same directory (or in a sub-directory of this directory) and have
     a different file extension. From these files, features and targets
     can be computed. The features and targets will be cached.
+
+    Parameters
+    ----------
+    data_dir : str
+        Base directory of the data set
+    feature_cache_dir : str
+        Directory where to store cached features
+    split_defs : list of str
+        Files containing the fold split definitions. To not use any
+        split definition, set to [], None, or False.
+    source_ext : str
+        File extension of the source files (e.g. '.wav')
+    gt_ext : str
+        File extension of the ground truth files (e.g. '.beats')
+    compute_features : callable with `name` attribute
+        Callable that takes a source file as parameter and returns the computed
+        features. If no `name` attribute is provided, the `__name__` attribute
+        will be used. See also :func:`name_callable`.
+    compute_targets : callable with `name` attribute
+        Callable that takes a ground truth file and the number of targets
+        as parameters and returns the computed targets. If no `name` attribute
+        is provided, the `__name__` attribute will be used.
+        See also :func:`name_callable`.
     """
 
     def __init__(self, data_dir, feature_cache_dir, split_defs,
                  source_ext, gt_ext, compute_features, compute_targets):
-        """
-        Initialises the dataset class.
-        :param data_dir:          dataset base directory
-        :param feature_cache_dir: directory where to store cached features
-        :param split_defs:        files containing the fold split definitions
-        :param source_ext:        file extension of source files (e.g. '.wav')
-        :param gt_ext:            file extension of ground truth files
-                                  (e.g. '.beats')
-        :param compute_features:  function that computes the features given
-                                  a source file
-        :param compute_targets:   function that computes the targets given
-                                  a target file, number of frames and frames
-                                  per second
-        """
 
         src_files = files.expand(data_dir, '*' + source_ext)
         gt_files = files.expand(data_dir, '*' + gt_ext)
@@ -47,89 +78,114 @@ class Dataset:
 
         self.split_defs = split_defs
 
-    def get_split(self, val_split_file, test_split_file):
+    def predefined_split(self, *split_defs):
         """
-        Creates a file dictionary (as used by get_preprocessed_datasource),
-        where validation and test folds are pre-defined in files
-        :param val_split_file:  file containing a list of files to use in the
-                                validation set
-        :param test_split_file: file containing a list of files to use in the
-                                test set
-        :return:                file dictionary
+        For each split_def, creates a file dictionary with features and target
+        files matching the splits. A split is a text file containing one
+        file name per line. All feature and target files not belonging to any
+        of the given splits are also returned.
+
+        Parameters
+        ----------
+        *split_defs : str
+            One or more files defining the splits.
+
+        Returns
+        -------
+        List of dict
+            Dictionaries containing feature files (key: 'feat') and target
+            files (key: 'targ') for each split definition in `*split_defs`.
+            The first dictionary contains feature and target files not
+            belonging to any split defined in `*split_defs`
         """
 
-        train_feat, val_feat, test_feat = \
-            files.predefined_train_val_test_split(
-                self.feature_files,
-                val_split_file,
-                test_split_file,
-                match_suffix=files.FEAT_EXT
-            )
+        def match_targets(feat):
+            return files.match_files(feat, self.target_files,
+                                     files.FEAT_EXT, files.TARGET_EXT)
 
-        train_targ = files.match_files(train_feat, self.target_files,
-                                       files.FEAT_EXT,
-                                       files.TARGET_EXT)
-        val_targ = files.match_files(val_feat, self.target_files,
-                                     files.FEAT_EXT,
-                                     files.TARGET_EXT)
-        test_targ = files.match_files(test_feat, self.target_files,
-                                      files.FEAT_EXT,
-                                      files.TARGET_EXT)
+        feature_splits = files.predefined_split(
+            self.feature_files, files.FEAT_EXT, *split_defs)
+        return [{'feat': feat,
+                 'targ': match_targets(feat)}
+                for feat in feature_splits]
 
-        return {'train': {'feat': train_feat,
-                          'targ': train_targ},
-                'val': {'feat': val_feat,
-                        'targ': val_targ},
-                'test': {'feat': test_feat,
-                         'targ': test_targ}}
-
-    def get_fold_split(self, val_fold=0, test_fold=1):
+    def fold_split(self, *folds):
         """
-        Creates a file dictionary (as used by get_preprocessed_datasource),
-        where train, validation, and test folds are pre-defined in split
-        files.
-        :param val_fold:  index of validation fold
-        :param test_fold: index of test fold
-        :return: file dictionary
+        Creates a dictionary containing feature and target files for each
+        given fold. Folds are defined by the :param:split_defs parameter
+        when creating a :class:Dataset instance.
+
+        Parameters
+        ----------
+        folds : int
+            Fold IDs to return the feature and target files for
+
+        Returns
+        -------
+        list of dict
+            Dictionaries containing feature files (key: 'feat') and target
+            files (key: 'targ') for each fold in `*folds`.
+            The first dictionary contains feature and target files not
+            belonging to any fold defined in `*folds`
+
+        Raises
+        ------
+        RuntimeError
+            If no fold splits were defined upon constructing the Dataset
+
         """
         if not self.split_defs:
             raise RuntimeError('No cross-validation folds defined!')
 
-        return self.get_split(self.split_defs[val_fold],
-                              self.split_defs[test_fold])
+        return self.predefined_split(*[self.split_defs[f] for f in folds])
 
-    def get_rand_split(self, val_perc=0.2, test_perc=0.2,
-                       random=np.random.RandomState(seed=0)):
+    def random_split(self, distribution=None, random=np.random.RandomState()):
         """
-        Creates a file dictionary (as used by get_preprocessed_datasource),
-        where train, validation, and test folds are created randomly.
-        :param val_perc:  percentage of files to be used for validation
-        :param test_perc: percentage of files to be used for testing
-        :param random:    random state
-        :return:          file dictionary
+        Creates a dictionary containing feature and target files, split
+        randomly according to the given :param:distribution.
+
+        Parameters
+        ----------
+        distribution : ndarray-like
+            Distribution defining the splits. If it sums to less than 1.0,
+            another bin that catches the remaining probability will be created
+            and added as first bin.
+        random : np.random.RandomState
+            Random state. Default: np.random.RandomState()
+
+        Returns
+        -------
+        list of dict
+            Dictionaries containing feature files (key: 'feat') and target
+            files (key: 'targ') for each bin defined in :param:`distribution`.
+            Number of files for each bin corresponds to its probability, e.g.
+            for a distribution `[0.6, 0.4]`, the first bin will contain 60%
+            of files, and the second bin 40%.
+
+        Raises
+        ------
+        ValueError
+            If distribution sums to more than 1.0
+
         """
-        indices = np.arange(len(self.feature_files))
-        random.shuffle(indices)
-        n_test_files = int(len(indices) * test_perc)
-        n_val_files = int(len(indices) * val_perc)
+        distribution = np.array(distribution)
 
-        test_feat = self.feature_files[:n_test_files]
-        val_feat = self.feature_files[n_test_files:n_test_files + n_val_files]
-        train_feat = self.feature_files[n_test_files + n_val_files:]
+        if sum(distribution) > 1.0:
+            raise ValueError('Distribution sums to > 1.0.')
+        elif sum(distribution) < 1.0:
+            distribution = np.hstack((1.0 - sum(distribution), distribution))
 
-        train_targ = files.match_files(train_feat, self.target_files,
-                                       files.FEAT_EXT,
-                                       files.TARGET_EXT)
-        val_targ = files.match_files(val_feat, self.target_files,
-                                     files.FEAT_EXT,
-                                     files.TARGET_EXT)
-        test_targ = files.match_files(test_feat, self.target_files,
-                                      files.FEAT_EXT,
-                                      files.TARGET_EXT)
+        ffiles = list(self.feature_files)
+        random.shuffle(ffiles)
+        idxs = [None] + list(distribution.cumsum() * len(ffiles))
 
-        return {'train': {'feat': train_feat,
-                          'targ': train_targ},
-                'val': {'feat': val_feat,
-                        'targ': val_targ},
-                'test': {'feat': test_feat,
-                         'targ': test_targ}}
+        splits = []
+        for begin, end in zip(idxs[:-1], idxs[1:]):
+            feat = ffiles[begin:end]
+            targ = files.match_files(feat, self.target_files,
+                                     files.FEAT_EXT, files.TARGET_EXT)
+            splits.append({'feat': feat, 'targ': targ})
+
+        return splits
+
+

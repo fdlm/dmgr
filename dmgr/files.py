@@ -89,11 +89,14 @@ def prepare(source_files, ground_truth_files, dest_dir,
         ground_truth_files = it.repeat(None)
         target_files = None
 
-    feat_cache_path = os.path.join(dest_dir, compute_feat.name)
+    def get_name(c):
+        return c.name if 'name' in c.__dict__ else c.__name__
+
+    feat_cache_path = os.path.join(dest_dir, get_name(compute_feat))
     if not os.path.exists(feat_cache_path):
         os.makedirs(feat_cache_path)
 
-    target_cache_path = os.path.join(dest_dir, compute_targets.name)
+    target_cache_path = os.path.join(dest_dir, get_name(compute_targets))
     if not os.path.exists(target_cache_path):
         os.makedirs(target_cache_path)
 
@@ -169,41 +172,37 @@ def random_split(files, split_perc=0.5):
     return files[:n_split], files[n_split:]
 
 
-def predefined_train_val_test_split(files, val_def=None, test_def=None,
-                                    match_suffix=AUDIO_EXT):
+def predefined_split(files, ext, *split_defs):
     """
-    Splits a list of files into train, validation and test set based on
-    file lists defined in text files. These text files contain one file name
-    per line without file extension. If no file defining the validation
-    set or test set are given, the function will return None for the
-    respective set. All files that are not defined as belonging to the
-    validation set or the test set will be automatically put into the train set.
+    Splits a list of files into seperate lists based on file lists defined in
+    text files. These text files contain one file name per line, without file
+    extension. All files not belonging to any of the given splits are also
+    returned.
 
-    :param files:        total list of all files
-    :param val_def:      file containing the validation set definition
-    :param test_def:     file containing the test set definition
-    :param match_suffix: suffix of the files in the total file list
-    :return:             list of files for the train set, validation set
-                         and test set respectively (tuple)
+    Parameters
+    ----------
+    files : list of str
+        List of all file names.
+    ext : str
+        File extension to be ignored in the list of files.
+    *split_defs : str
+        One or more files defining the splits.
+
+    Returns
+    -------
+    list of list of str
+        Lists of matching files as defined in `*split_defs`. The first list
+        contains all files in the `files` list that do not belong to any
+        split as defined in `*split_defs`.
     """
 
     train_files = set(files)
 
-    if val_def:
-        with open(val_def, 'r') as f:
-            val_files = match_files(f.read().splitlines(), '',
-                                    files, match_suffix)
-        train_files.difference_update(set(val_files))
-    else:
-        val_files = None
+    splits = []
+    for split_def in split_defs:
+        with open(split_def, 'r') as f:
+            splits.append(match_files(f.read().splitlines(), '', files, ext))
+        train_files.difference_update(set(splits[-1]))
 
-    if test_def:
-        with open(test_def, 'r') as f:
-            test_files = match_files(f.read().splitlines(), '',
-                                     files, match_suffix)
-        train_files.difference_update(set(test_files))
-    else:
-        test_files = None
-
-    return list(train_files), val_files, test_files
+    return [list(train_files)] + splits
 
