@@ -6,13 +6,41 @@ from .iterators import iterate_batches
 
 
 class DataSource(object):
+    """
+    A :class:DataSource is a collection of data and corresponding targets.
+    Data can be provided raw or pre-processed. Data and targets
+    can be sliced using the `start`, `stop`, and `step` parameters.
+
+    Parameters
+    ----------
+    data : np.ndarray or np.memmap
+        The data array.
+    targets : np.ndarray or np.memmap
+        The target array
+    start : int or None
+        Start index for data and target slicing.
+    stop : int or None
+        Stop index for data and target slicing.
+    stop : int or None
+        Step size for data and target slicing.
+    preprocessors: list or None
+        List of pre-processing functions. These functions should take only
+        one parameter (the data) and return the pre-processed data. They
+        will be called in the order given in the list.
+    name : string
+        Name of the :class:DataSource. Will be used when converting to
+        a string.
+    """
 
     def __init__(self, data, targets, start=None, stop=None, step=None,
                  preprocessors=None, name=None):
 
-        assert data.shape[0] == targets.shape[0], \
-            'n_data = {}, n_targets = {}'.format(data.shape[0],
-                                                 targets.shape[0])
+        if data.shape[0] != targets.shape[0]:
+            raise ValueError(
+                'Number of data ({}) is not equals '
+                'number of targets ({})'.format(data.shape[0],
+                                                targets.shape[0]))
+
         self.name = name
         self._data = data[start:stop:step]
         self._targets = targets[start:stop:step]
@@ -28,50 +56,94 @@ class DataSource(object):
     @classmethod
     def from_files(cls, data_file, target_file, memory_mapped=True,
                    *args, **kwargs):
+        """
+        Create a :class:DataSource from NumPy binary files.
+
+        Parameters
+        ----------
+        data_file : file-like object or string
+            The file to read. File-like objects must support the
+            ``seek()`` and ``read()`` methods. Pickled files require that the
+            file-like object support the ``readline()`` method as well.
+        target_file : file-like object or string
+            The file to read. File-like objects must support the
+            ``seek()`` and ``read()`` methods. Pickled files require that the
+            file-like object support the ``readline()`` method as well.
+        memory_mapped : bool
+            Should data and targets be read memory-mapped or loaded into
+            memory.
+        *args :
+            Arguments passed to the init method of :class:DataSource.
+        **kwargs :
+            Keyword arguments passed to the init method of :class:DataSource.
+
+        Returns
+        -------
+        DataSource
+            DataSource with data and targets from the given files
+        """
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
                    np.load(target_file, mmap_mode=mmap), *args, **kwargs)
 
-    def save(self, data_file, target_file):
-        np.save(data_file, self._data)
-        np.save(target_file, self._targets)
-
     def _process(self, data):
+        """Process the data using all preprocessors."""
         for pp in self._preprocessors:
             data = pp(data)
 
         return data
 
-    def __getitem__(self, item_index):
-        return self._process(self._data[item_index]), self._targets[item_index]
+    def __getitem__(self, idx):
+        """
+        Return pre-processed data and targets for given index.
+
+        Parameters
+        ----------
+        idx : int, slice, list
+            Index of data and targets to return.
+
+        Returns
+        -------
+        tuple
+            Pre-processed data and targets for given index.
+
+        """
+        return self._process(self._data[idx]), self._targets[idx]
 
     @property
     def n_data(self):
+        """int: number of data points (equals number of targets)"""
         return self._data.shape[0]
 
     def __len__(self):
+        """int: number of data points (equals number of targets)"""
         return self.n_data
 
     @property
-    def feature_shape(self):
+    def dshape(self):
+        """tuple: shape of a data point"""
         return self._data.shape[1:]
 
     @property
-    def target_shape(self):
+    def tshape(self):
+        """tuple: shape of a target"""
         return self._targets.shape[1:]
 
     @property
     def dtype(self):
+        """type: dtype of the data"""
         return self._data.dtype
 
     @property
     def ttype(self):
+        """type: dtype of the targets"""
         return self._targets.dtype
 
     def __str__(self):
+        """str: a string representation of the :class:DataSource"""
         return '{}: N={}  dshape={}  tshape={}'.format(
             self.__class__.__name__,
-            self.n_data, self.feature_shape, self.target_shape)
+            self.n_data, self.dshape, self.tshape)
 
 
 # taken from: http://www.scipy.org/Cookbook/SegmentAxis
@@ -184,6 +256,7 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
 
 
 class ContextDataSource(DataSource):
+    # TODO: Add Docstring!
 
     def __init__(self, data, targets, context_size,
                  start=None, stop=None, step=None, preprocessors=None,
@@ -224,13 +297,14 @@ class ContextDataSource(DataSource):
     @classmethod
     def from_files(cls, data_file, target_file, memory_mapped=True,
                    *args, **kwargs):
+        # TODO: Add Docstring!
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
                    np.load(target_file, mmap_mode=mmap),
                    *args, **kwargs)
 
     def __getitem__(self, item):
-
+        # TODO: Add Docstring!
         if isinstance(item, int):
             item *= self.step
             if item < self.context_size:
@@ -303,25 +377,29 @@ class ContextDataSource(DataSource):
 
     @property
     def n_data(self):
+        # TODO: Add Docstring
         return self._n_data / self.step
 
     @property
-    def feature_shape(self):
+    def dshape(self):
+        # TODO: Add Docstring
         return self._data.shape[1:]
 
     @property
-    def target_shape(self):
+    def tshape(self):
+        # TODO: Add Docstring
         return self._targets.shape[1:]
 
 
 class AggregatedDataSource(object):
+    # TODO: Add Docstring
 
     def __init__(self, data_sources, keep_order=False):
         assert len(data_sources) > 0, 'Need at least one data source'
-        assert all(x.feature_shape == data_sources[0].feature_shape
+        assert all(x.dshape == data_sources[0].dshape
                    for x in data_sources), \
             'Data sources dimensionality has to be equal'
-        assert all(x.target_shape == data_sources[0].target_shape
+        assert all(x.tshape == data_sources[0].tshape
                    for x in data_sources), \
             'Data sources target dimensionality has to be equal'
 
@@ -332,6 +410,7 @@ class AggregatedDataSource(object):
     @classmethod
     def from_files(cls, data_files, target_files, memory_mapped=False,
                    data_source_type=DataSource, names=None, **kwargs):
+        # TODO: Add Docstring
 
         if not names:
             names = [basename(d).split('.')[0] for d in data_files]
@@ -343,11 +422,12 @@ class AggregatedDataSource(object):
         )
 
     def save(self, data_file, target_file):
+        # TODO: Add Docstring
 
         with TemporaryFile() as data_tmp, TemporaryFile() as target_temp:
-            data_shape = (self.n_data,) + self.feature_shape
+            data_shape = (self.n_data,) + self.dshape
             df = np.memmap(data_tmp, shape=data_shape, dtype=self.dtype)
-            target_shape = (self.n_data,) + self.target_shape
+            target_shape = (self.n_data,) + self.tshape
             tf = np.memmap(target_temp, shape=target_shape, dtype=self.ttype)
 
             for i in range(self.n_data):
@@ -364,6 +444,7 @@ class AggregatedDataSource(object):
         return ds_idx, d_idx
 
     def __getitem__(self, item):
+        # TODO: Add Docstring
         if isinstance(item, int):
             ds_idx, d_idx = self._to_ds_idx(item)
             return self._data_sources[ds_idx][d_idx]
@@ -413,35 +494,43 @@ class AggregatedDataSource(object):
 
     @property
     def n_datasources(self):
+        # TODO: Add Docstring
         return len(self._data_sources)
 
     @property
     def n_data(self):
+        # TODO: Add Docstring
         return sum(ds.n_data for ds in self._data_sources)
 
     def __len__(self):
+        # TODO: Add Docstring
         return self.n_data
 
     @property
-    def feature_shape(self):
-        return self._data_sources[0].feature_shape
+    def dshape(self):
+        # TODO: Add Docstring
+        return self._data_sources[0].dshape
 
     @property
-    def target_shape(self):
-        return self._data_sources[0].target_shape
+    def tshape(self):
+        # TODO: Add Docstring
+        return self._data_sources[0].tshape
 
     @property
     def dtype(self):
+        # TODO: Add Docstring
         return self._data_sources[0].dtype
 
     @property
     def ttype(self):
+        # TODO: Add Docstring
         return self._data_sources[0].ttype
 
     def __str__(self):
+        # TODO: Add Docstring
         return '{}: N={}  dshape={}  tshape={}'.format(
             self.__class__.__name__,
-            self.n_data, self.feature_shape, self.target_shape)
+            self.n_data, self.dshape, self.tshape)
 
 
 def get_datasources(files, preprocessors=None, cached=False, cache_dir=None,
@@ -500,12 +589,13 @@ def get_datasources(files, preprocessors=None, cached=False, cache_dir=None,
 
 
 def cache_datasource(datasource, batch_size=8192, cache_dir=None):
+    # TODO: Add Docstring
     from tempfile import NamedTemporaryFile
 
     f_cache = NamedTemporaryFile(suffix='.npz', dir=cache_dir)
     t_cache = NamedTemporaryFile(suffix='.npz', dir=cache_dir)
-    f_shape = (datasource.n_data,) + datasource.feature_shape
-    t_shape = (datasource.n_data,) + datasource.target_shape
+    f_shape = (datasource.n_data,) + datasource.dshape
+    t_shape = (datasource.n_data,) + datasource.tshape
 
     features = np.memmap(f_cache, dtype=datasource.dtype, shape=f_shape)
     targets = np.memmap(t_cache, dtype=datasource.ttype, shape=t_shape)
@@ -522,6 +612,7 @@ def cache_datasource(datasource, batch_size=8192, cache_dir=None):
 
 def cache_aggregated_datasource(agg_datasource, batch_size=8192,
                                 cache_dir=None):
+    # TODO: Add Docstring
     datasources = [agg_datasource.get_datasource(i)
                    for i in range(agg_datasource.n_datasources)]
     cached_ds = [cache_datasource(ds, batch_size, cache_dir)
