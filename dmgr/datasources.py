@@ -28,8 +28,7 @@ class DataSource(object):
         one parameter (the data) and return the pre-processed data. They
         will be called in the order given in the list.
     name : string
-        Name of the :class:DataSource. Will be used when converting to
-        a string.
+        Name of the :class:DataSource.
     """
 
     def __init__(self, data, targets, start=None, stop=None, step=None,
@@ -80,7 +79,7 @@ class DataSource(object):
         Returns
         -------
         DataSource
-            DataSource with data and targets from the given files
+            :class:DataSource with data and targets from the given files
         """
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
@@ -256,7 +255,43 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
 
 
 class ContextDataSource(DataSource):
-    # TODO: Add Docstring!
+    """
+    A :class:ContextDataSource is a collection of data and corresponding
+    targets. Data can be provided raw or pre-processed. Data and targets
+    can be sliced using the `start`, `stop`, and `step` parameters.
+    Additionally, data is provided with a context window. This assumes some
+    relationship between consecutive data points.
+
+    Parameters
+    ----------
+    data : np.ndarray or np.memmap
+        The data array.
+    targets : np.ndarray or np.memmap
+        The target array
+    context_size : int
+        Context size to add to the data point. This is the number of data
+        points concatenated before and after the indexed datapoint. E.g., if
+        context_size is 2, the returned data will contain 5 data points.
+    start : int or None
+        Start index for data and target slicing.
+    stop : int or None
+        Stop index for data and target slicing.
+    stop : int or None
+        Step size for data and target slicing.
+    preprocessors: list or None
+        List of pre-processing functions. These functions should take only
+        one parameter (the data) and return the pre-processed data. They
+        will be called in the order given in the list.
+    name : string
+        Name of the :class:ContextDataSource.
+
+    Notes
+    -----
+    Slicing refers to the central data points in the returned contexts. This
+    means that the data points concatenated to a data point are not subject
+    to the step parameter.
+
+    """
 
     def __init__(self, data, targets, context_size,
                  start=None, stop=None, step=None, preprocessors=None,

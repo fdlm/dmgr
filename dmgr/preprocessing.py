@@ -5,7 +5,8 @@ from . import iterators
 
 
 def stats_batchwise(dataset, batch_size=1024):
-    mean = np.zeros(dataset.feature_shape, dtype=np.float32)
+    # TODO: Add Docstring
+    mean = np.zeros(dataset.dshape, dtype=np.float32)
     mean_xs = np.zeros_like(mean, dtype=np.float32)
 
     for x, _ in iterators.iterate_batches(dataset, batch_size, expand=False):
@@ -22,7 +23,8 @@ def stats_batchwise(dataset, batch_size=1024):
 
 
 def max_batchwise(dataset, batch_size=1024):
-    max_val = np.zeros(dataset.feature_shape, dtype=np.float32)
+    # TODO: Add Docstring
+    max_val = np.zeros(dataset.dshape, dtype=np.float32)
 
     for x, _ in iterators.iterate_batches(dataset, batch_size, expand=True):
         max_val = np.maximum(max_val, np.abs(x).max(axis=0))
@@ -31,47 +33,60 @@ def max_batchwise(dataset, batch_size=1024):
 
 
 class ZeroMeanUnitVar(object):
+    # TODO: Add Docstring
 
     def __init__(self, mean=0., std_dev=1.):
+        # TODO: Add Docstring
         self.mean = mean
         self.std_dev = std_dev
 
     def __call__(self, data):
+        # TODO: Add Docstring
         return (data - self.mean) / self.std_dev
 
     def train(self, dataset, batch_size=4096):
+        # TODO: Add Docstring
         self.mean, self.std_dev = stats_batchwise(dataset, batch_size)
 
     def load(self, filename):
+        # TODO: Add Docstring
         with open(filename, 'r') as f:
             self.mean, self.std_dev = pickle.load(f)
 
     def save(self, filename):
+        # TODO: Add Docstring
         with open(filename, 'w') as f:
             pickle.dump((self.mean, self.std_dev), f)
 
 
 class MaxNorm(object):
+    # TODO: Add Docstring
 
     def __init__(self, max_val=1.):
+        # TODO: Add Docstring
         self.max_val = max_val
 
     def __call__(self, data):
+        # TODO: Add Docstring
         return data / self.max_val
 
     def train(self, dataset, batch_size=4096):
+        # TODO: Add Docstring
         self.max_val = np.max(max_batchwise(dataset, batch_size))
 
     def load(self, filename):
+        # TODO: Add Docstring
         with open(filename, 'r') as f:
             self.max_val = pickle.load(f)
 
     def save(self, filename):
+        # TODO: Add Docstring
         with open(filename, 'w') as f:
             pickle.dump(self.max_val, f)
 
 
 class PcaWhitening(object):
+    # TODO: Add Docstring
 
     def __init__(self, n_train_vectors=None, n_components=None):
         """
@@ -84,6 +99,7 @@ class PcaWhitening(object):
         self.n_components = n_components
 
     def __call__(self, data):
+        # TODO: Add Docstring
         if self.pca is not None:
             # flatten features, pca only works on 1d arrays
             data_shape = data.shape
@@ -95,6 +111,7 @@ class PcaWhitening(object):
             return data
 
     def train(self, dataset, batch_size=4096):
+        # TODO: Add Docstring
         from sklearn.decomposition import PCA
 
         # select a random subset of the data if self.n_train_vectors is not
@@ -111,15 +128,18 @@ class PcaWhitening(object):
         self.pca.fit(data_flat)
 
     def load(self, filename):
+        # TODO: Add Docstring
         with open(filename, 'r') as f:
             self.pca.set_params(pickle.load(f))
 
     def save(self, filename):
+        # TODO: Add Docstring
         with open(filename, 'w') as f:
             pickle.dump(self.pca.get_params(deep=True), f)
 
 
 class ZcaWhitening(object):
+    # TODO: Add Docstring
 
     def __init__(self, regularisation, n_train_vectors=None):
         """
@@ -134,6 +154,7 @@ class ZcaWhitening(object):
         self.n_train_vectors = n_train_vectors
 
     def __call__(self, data):
+        # TODO: Add Docstring
 
         if self.components is None:
             return data
@@ -143,6 +164,7 @@ class ZcaWhitening(object):
         return np.dot(data - self.mean, self.components.T).reshape(orig_shape)
 
     def train(self, dataset, batch_size=4096):
+        # TODO: Add Docstring
         if self.n_train_vectors is not None:
             sel_data = list(np.random.choice(dataset.n_data,
                                              size=self.n_train_vectors,

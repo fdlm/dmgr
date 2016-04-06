@@ -35,6 +35,7 @@ def threaded(generator, num_cached=10):
 
 def iterate_batches(data_source, batch_size, shuffle=False, expand=True,
                     add_time_dim=False):
+    # TODO: Add "random" parameter!
 
     idxs = range(data_source.n_data)
 

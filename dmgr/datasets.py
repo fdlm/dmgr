@@ -25,7 +25,7 @@ def name_callable(func, name):
     return fn
 
 
-class Dataset:
+class Dataset(object):
     """
     The Dataset class prepares and manages features and targets for a data set.
     It assumes that a data set consists of "source files", containing the
