@@ -90,7 +90,10 @@ def prepare(source_files, ground_truth_files, dest_dir,
         target_files = None
 
     def get_name(c):
-        return c.name if 'name' in c.__dict__ else c.__name__
+        try:
+            return c.name
+        except AttributeError:
+            return c.__name__
 
     feat_cache_path = os.path.join(dest_dir, get_name(compute_feat))
     if not os.path.exists(feat_cache_path):
@@ -145,9 +148,10 @@ def match_files(files, ext, matching_files, matching_ext):
         return fn[:-len(e)] if fn.endswith(e) else fn
 
     for f in files:
+        f = os.path.basename(f)
         if len(ext) > 0:
             f = strip_ext(f, ext)
-        matches = fnmatch.filter(matching_files, f + matching_ext)
+        matches = fnmatch.filter(matching_files, '*' + f + matching_ext)
         if len(matches) > 1:
             raise SystemExit('Multiple matching '
                              'files for {}: {}'.format(f, matches))

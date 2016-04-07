@@ -64,7 +64,7 @@ class Dataset(object):
 
         src_files = files.expand(data_dir, '*' + source_ext)
         gt_files = files.expand(data_dir, '*' + gt_ext)
-        gt_files = files.match_files(src_files, gt_files, source_ext, gt_ext)
+        gt_files = files.match_files(src_files, source_ext, gt_files, gt_ext)
 
         feat_files, target_files = files.prepare(
             src_files, gt_files, feature_cache_dir,
@@ -100,8 +100,8 @@ class Dataset(object):
         """
 
         def match_targets(feat):
-            return files.match_files(feat, self.target_files,
-                                     files.FEAT_EXT, files.TARGET_EXT)
+            return files.match_files(feat, files.FEAT_EXT,
+                                     self.target_files, files.TARGET_EXT)
 
         feature_splits = files.predefined_split(
             self.feature_files, files.FEAT_EXT, *split_defs)

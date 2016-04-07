@@ -1,3 +1,4 @@
+import collections
 import random
 import numpy as np
 
@@ -35,7 +36,6 @@ def threaded(generator, num_cached=10):
 
 def iterate_batches(data_source, batch_size, shuffle=False, expand=True,
                     add_time_dim=False):
-    # TODO: Add "random" parameter!
 
     idxs = range(data_source.n_data)
 
@@ -152,3 +152,53 @@ def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
 
     if len(data_chunks) > 0:
         yield _chunks_to_arrays(data_chunks, target_chunks, max_len)
+
+
+def iterate_class_balanced_batches(data_source, batch_size, shuffle=False,
+                                   expand=True):
+    """
+    Iterate mini-batches, making sure each mini-batch has a uniform
+    target distribution. This is achieved by sampling with replacement
+    from the :class:`DataSource`. Thus, :param:`shuffle` and
+    :param:`expand` do not have any effect here: The data is always
+    shuffled, and :param:`batch_size` elements are returned.
+
+    Parameters
+    ----------
+    data_source : :class:`DataSource`
+        Data source to iterate over
+    batch_size : int
+        Number of elements per mini-batch
+    shuffle : bool
+        Unused
+    expand : bool
+        Unused
+
+    Yields
+    ------
+    tuple of two np.ndarray
+        Data and targets of a mini-batch
+    """
+
+    # batchwise (for memory efficiency) collect target distribution.
+    # assumes discrete targets
+    freqs = collections.Counter(
+        tuple(data_source[i][1]) for i in range(data_source.n_data)
+    )
+
+    true_dist = {t: float(f) / data_source.n_data
+                 for t, f in freqs.iteritems()}
+
+    ideal_dist = {t: 1. / len(true_dist) for t in freqs}
+
+    select_prob = {t: ideal_dist[t] / (true_dist[t] * data_source.n_data)
+                   for t in freqs}
+
+    cum_dist = np.array([select_prob[tuple(data_source[i][1])]
+                         for i in range(data_source.n_data)]).cumsum()
+
+    n_sampled = 0
+    while n_sampled < len(data_source):
+        batch_idxs = np.searchsorted(cum_dist, np.random.sample(batch_size))
+        n_sampled += batch_size
+        yield data_source[batch_idxs]

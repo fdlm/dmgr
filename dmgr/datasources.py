@@ -407,6 +407,9 @@ class ContextDataSource(DataSource):
             return self[range(item.start or 0, item.stop or self.n_data,
                               item.step or 1)]
 
+        elif isinstance(item, np.ndarray):
+            return self[list(item)]
+
         else:
             raise TypeError('Index type {} not supported!'.format(type(item)))
 
@@ -516,6 +519,10 @@ class AggregatedDataSource(object):
         elif isinstance(item, slice):
             return self[range(item.start or 0, item.stop or self.n_data,
                               item.step or 1)]
+
+        elif isinstance(item, np.ndarray):
+            return self[list(item)]
+
         else:
             raise TypeError('Index type {} not supported!'.format(type(item)))
 
@@ -593,34 +600,25 @@ def get_datasources(files, preprocessors=None, cached=False, cache_dir=None,
     :return:              tuple of train data source, validation data source
                           and test data source
     """
-    train_set = AggregatedDataSource.from_files(
-        files['train']['feat'], files['train']['targ'], memory_mapped=True,
-        preprocessors=preprocessors,
-        **kwargs
-    )
 
-    val_set = AggregatedDataSource.from_files(
-        files['val']['feat'], files['val']['targ'], memory_mapped=True,
-        preprocessors=preprocessors,
-        **kwargs
-    )
+    datasources = [
+        AggregatedDataSource.from_files(
+            f['feat'], f['targ'], memory_mapped=True,
+            preprocessors=preprocessors, **kwargs
+        )
+        for f in files
+    ]
 
-    test_set = AggregatedDataSource.from_files(
-        files['test']['feat'], files['test']['targ'], memory_mapped=True,
-        preprocessors=preprocessors,
-        **kwargs
-    )
-
+    # train on first datasource
     if preprocessors is not None:
         for p in preprocessors:
-            p.train(train_set)
+            p.train(datasources[0])
 
     if cached:
-        train_set = cache_aggregated_datasource(train_set, cache_dir=cache_dir)
-        test_set = cache_aggregated_datasource(test_set, cache_dir=cache_dir)
-        val_set = cache_aggregated_datasource(val_set, cache_dir=cache_dir)
+        datasources = [cache_aggregated_datasource(ds, cache_dir=cache_dir)
+                       for ds in datasources]
 
-    return train_set, val_set, test_set
+    return datasources
 
 
 def cache_datasource(datasource, batch_size=8192, cache_dir=None):
