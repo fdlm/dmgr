@@ -154,14 +154,10 @@ def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
         yield _chunks_to_arrays(data_chunks, target_chunks, max_len)
 
 
-def iterate_class_balanced_batches(data_source, batch_size, shuffle=False,
-                                   expand=True):
+def iterate_batches_probabilistic(data_source, batch_size, distribution):
     """
-    Iterate mini-batches, making sure each mini-batch has a uniform
-    target distribution. This is achieved by sampling with replacement
-    from the :class:`DataSource`. Thus, :param:`shuffle` and
-    :param:`expand` do not have any effect here: The data is always
-    shuffled, and :param:`batch_size` elements are returned.
+    Iterate mini-batches, selecting data from the :class:`DataSource` based
+    on data selection probabilities.
 
     Parameters
     ----------
@@ -169,10 +165,8 @@ def iterate_class_balanced_batches(data_source, batch_size, shuffle=False,
         Data source to iterate over
     batch_size : int
         Number of elements per mini-batch
-    shuffle : bool
-        Unused
-    expand : bool
-        Unused
+    distribution : np.ndarray
+        Probabilities to select an element from the data_source
 
     Yields
     ------
@@ -180,25 +174,66 @@ def iterate_class_balanced_batches(data_source, batch_size, shuffle=False,
         Data and targets of a mini-batch
     """
 
-    # batchwise (for memory efficiency) collect target distribution.
-    # assumes discrete targets
-    freqs = collections.Counter(
-        tuple(data_source[i][1]) for i in range(data_source.n_data)
-    )
-
-    true_dist = {t: float(f) / data_source.n_data
-                 for t, f in freqs.iteritems()}
-
-    ideal_dist = {t: 1. / len(true_dist) for t in freqs}
-
-    select_prob = {t: ideal_dist[t] / (true_dist[t] * data_source.n_data)
-                   for t in freqs}
-
-    cum_dist = np.array([select_prob[tuple(data_source[i][1])]
-                         for i in range(data_source.n_data)]).cumsum()
+    cum_dist = distribution.cumsum()
 
     n_sampled = 0
     while n_sampled < len(data_source):
         batch_idxs = np.searchsorted(cum_dist, np.random.sample(batch_size))
         n_sampled += batch_size
         yield data_source[batch_idxs]
+
+
+class BatchIterator:
+
+    def __init__(self, data_source, batch_size, shuffle=False, expand=True,
+                 add_time_dim=False):
+        self.data_source = data_source
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.expand = expand
+        self.add_time_dim = add_time_dim
+
+    def __iter__(self):
+        return iterate_batches(self.data_source, self.batch_size, self.shuffle,
+                               self.expand, self.add_time_dim)
+
+
+class DatasourceIterator:
+
+    def __init__(self, data_source, batch_size, shuffle=False, expand=True,
+                 max_seq_len=None):
+        self.data_source = data_source
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.expand = expand
+        self.max_seq_len = max_seq_len
+
+    def __iter__(self):
+        return iterate_datasources(self.data_source, self.batch_size,
+                                   self.shuffle, self.expand, self.max_seq_len)
+
+
+class ClassBalancedIterator:
+
+    def __init__(self, data_source, batch_size):
+        self.data_source = data_source
+        self.batch_size = batch_size
+
+        freqs = collections.Counter(
+            tuple(data_source[i][1]) for i in range(data_source.n_data)
+        )
+
+        true_dist = {t: float(f) / data_source.n_data
+                     for t, f in freqs.iteritems()}
+
+        ideal_dist = {t: 1. / len(true_dist) for t in freqs}
+
+        select_prob = {t: ideal_dist[t] / (true_dist[t] * data_source.n_data)
+                       for t in freqs}
+
+        self.dist = np.array([select_prob[tuple(data_source[i][1])]
+                              for i in range(data_source.n_data)])
+
+    def __iter__(self):
+        return iterate_batches_probabilistic(self.data_source,
+                                             self.batch_size, self.dist)
