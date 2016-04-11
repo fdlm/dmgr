@@ -98,7 +98,7 @@ class DataSource(object):
 
         Parameters
         ----------
-        idx : int, slice, list
+        idx : int, slice, list, np.ndarray
             Index of data and targets to return.
 
         Returns
@@ -152,24 +152,44 @@ def segment_axis(signal, frame_size, hop_size=1, axis=None, end='cut',
     Generate a new array that chops the given array along the given axis into
     (overlapping) frames.
 
-    :param signal:     signal [numpy array]
-    :param frame_size: size of each frame in samples [int]
-    :param hop_size:   hop size in samples between adjacent frames [int]
-    :param axis:       axis to operate on; if None, act on the flattened array
-    :param end:        what to do with the last frame, if the array is not
-                       evenly divisible into pieces; possible values:
-                       'cut'  simply discard the extra values
-                       'wrap' copy values from the beginning of the array
-                       'pad'  pad with a constant value
-    :param end_value:  value to use for end='pad'
-    :return:           2D array with overlapping frames
+    Parameters
+    ----------
+    signal : numpy array
+        Signal.
+    frame_size : int
+        Size of each frame [samples].
+    hop_size : int
+        Hop size between adjacent frames [samples].
+    axis : int, optional
+        Axis to operate on; if 'None', operate on the flattened array.
+    end : {'cut', 'wrap', 'pad'}, optional
+        What to do with the last frame, if the array is not evenly divisible
+        into pieces; possible values:
 
+        - 'cut'
+          simply discard the extra values,
+        - 'wrap'
+          copy values from the beginning of the array,
+        - 'pad'
+          pad with a constant value.
+
+    end_value : float, optional
+        Value used to pad if `end` is 'pad'.
+
+    Returns
+    -------
+    numpy array, shape (num_frames, frame_size)
+        Array with overlapping frames
+
+    Notes
+    -----
     The array is not copied unless necessary (either because it is unevenly
     strided and being flattened or because end is set to 'pad' or 'wrap').
 
     The returned array is always of type np.ndarray.
 
-    Example:
+    Examples
+    --------
     >>> segment_axis(np.arange(10), 4, 2)
     array([[0, 1, 2, 3],
            [2, 3, 4, 5],
@@ -332,44 +352,83 @@ class ContextDataSource(DataSource):
     @classmethod
     def from_files(cls, data_file, target_file, memory_mapped=True,
                    *args, **kwargs):
-        # TODO: Add Docstring!
+        """
+        Create a :class:ContextDataSource from NumPy binary files.
+
+        Parameters
+        ----------
+        data_file : file-like object or string
+            The data file to read. File-like objects must support the
+            ``seek()`` and ``read()`` methods. Pickled files require that the
+            file-like object support the ``readline()`` method as well.
+        target_file : file-like object or string
+            The target file to read. File-like objects must support the
+            ``seek()`` and ``read()`` methods. Pickled files require that the
+            file-like object support the ``readline()`` method as well.
+        memory_mapped : bool
+            Should data and targets be read memory-mapped or loaded into
+            memory.
+        *args :
+            Arguments passed to the init method of :class:ContextDataSource.
+        **kwargs :
+            Keyword arguments passed to the init method of
+            :class:ContextDataSource.
+
+        Returns
+        -------
+        ContextDataSource
+            :class:ContextDataSource with data and targets from the given files
+        """
         mmap = 'r+' if memory_mapped else None
         return cls(np.load(data_file, mmap_mode=mmap),
                    np.load(target_file, mmap_mode=mmap),
                    *args, **kwargs)
 
-    def __getitem__(self, item):
-        # TODO: Add Docstring!
-        if isinstance(item, int):
-            item *= self.step
-            if item < self.context_size:
-                return (self._process(self._begin_data[item]),
-                        self._targets[item])
-            elif item >= self._n_data - self.context_size:
-                data_item = item - self._n_data + self.context_size
+    def __getitem__(self, idx):
+        """
+        Return pre-processed data and targets for given index.
+
+        Parameters
+        ----------
+        idx : int, slice, list, np.ndarray
+            Index of data and targets to return.
+
+        Returns
+        -------
+        tuple
+            Pre-processed data and targets for given index.
+
+        """
+        if isinstance(idx, int):
+            idx *= self.step
+            if idx < self.context_size:
+                return (self._process(self._begin_data[idx]),
+                        self._targets[idx])
+            elif idx >= self._n_data - self.context_size:
+                data_item = idx - self._n_data + self.context_size
                 return (self._process(self._end_data[data_item]),
-                        self._targets[item])
+                        self._targets[idx])
             else:
-                return (self._process(self._data[item - self.context_size]),
-                        self._targets[item])
+                return (self._process(self._data[idx - self.context_size]),
+                        self._targets[idx])
 
-        elif isinstance(item, list):
+        elif isinstance(idx, list):
 
-            item = np.array(item) * self.step
+            idx = np.array(idx) * self.step
 
             if self.keep_order:
                 # first sort the indices to be retrieved so we can get all the
                 # padded data and segmented data in one command
-                sort_idxs = item.argsort()
+                sort_idxs = idx.argsort()
                 # remember how to un-sort the indices so we can restore the
                 # correct ordering in the end
                 revert_idxs = sort_idxs.argsort()
-                item = item[sort_idxs]
+                idx = idx[sort_idxs]
             else:
-                item.sort()
+                idx.sort()
 
-            gd_begin = np.searchsorted(item, self.context_size)
-            gd_end = np.searchsorted(item, self._n_data - self.context_size - 1,
+            gd_begin = np.searchsorted(idx, self.context_size)
+            gd_end = np.searchsorted(idx, self._n_data - self.context_size - 1,
                                      side='right')
 
             d = []
@@ -377,19 +436,19 @@ class ContextDataSource(DataSource):
 
             # 0 padded begin data
             if gd_begin > 0:
-                idxs = item[:gd_begin]
+                idxs = idx[:gd_begin]
                 d.append(self._process(self._begin_data[idxs]))
                 t.append(self._targets[idxs])
 
             # segmented data
             if gd_begin < gd_end:
-                idxs = item[gd_begin:gd_end]
+                idxs = idx[gd_begin:gd_end]
                 d.append(self._process(self._data[idxs - self.context_size]))
                 t.append(self._targets[idxs])
 
             # 0-padded end data
-            if gd_end < item.shape[0]:
-                idxs = item[gd_end:]
+            if gd_end < idx.shape[0]:
+                idxs = idx[gd_end:]
                 d.append(self._process(self._end_data[idxs - self._n_data +
                                                       self.context_size]))
                 t.append(self._targets[idxs])
@@ -403,43 +462,58 @@ class ContextDataSource(DataSource):
 
             return data, targets
 
-        elif isinstance(item, slice):
-            return self[range(item.start or 0, item.stop or self.n_data,
-                              item.step or 1)]
+        elif isinstance(idx, slice):
+            return self[range(idx.start or 0, idx.stop or self.n_data,
+                              idx.step or 1)]
 
-        elif isinstance(item, np.ndarray):
-            return self[list(item)]
+        elif isinstance(idx, np.ndarray):
+            return self[list(idx)]
 
         else:
-            raise TypeError('Index type {} not supported!'.format(type(item)))
+            raise TypeError('Index type {} not supported!'.format(type(idx)))
 
     @property
     def n_data(self):
-        # TODO: Add Docstring
+        """int: number of data points (equals number of targets)"""
         return self._n_data / self.step
-
-    @property
-    def dshape(self):
-        # TODO: Add Docstring
-        return self._data.shape[1:]
-
-    @property
-    def tshape(self):
-        # TODO: Add Docstring
-        return self._targets.shape[1:]
 
 
 class AggregatedDataSource(object):
-    # TODO: Add Docstring
+    """
+    A :class:AggregatedDataSource is a collection of :class:DataSource objects.
+    It provides a convenient way to access data and targets from multiple
+    data sources.
+
+    Parameters
+    ----------
+    data_sources : list of :class:DataSource or similar
+        List of :class:DataSource objects to aggregate. Data sources must have
+        the same data and target shapes and types.
+
+    keep_order : bool
+        If True, preserves the original order of data points when indexing
+        multiple data points (e.g. using a slice or a list of indices).
+        If False, no order is guaranteed.
+
+    Raises
+    ------
+    ValueError
+        If data sources do not have the same format and type, or if no
+        data sources are passed.
+    """
 
     def __init__(self, data_sources, keep_order=False):
-        assert len(data_sources) > 0, 'Need at least one data source'
-        assert all(x.dshape == data_sources[0].dshape
-                   for x in data_sources), \
-            'Data sources dimensionality has to be equal'
-        assert all(x.tshape == data_sources[0].tshape
-                   for x in data_sources), \
-            'Data sources target dimensionality has to be equal'
+        if len(data_sources) == 0:
+            raise ValueError('Need at least one data source')
+        if not all(x.dshape == data_sources[0].dshape for x in data_sources):
+            raise ValueError('Data sources dimensionality has to be equal')
+        if not all(x.tshape == data_sources[0].tshape for x in data_sources):
+            raise ValueError(
+                'Data sources target dimensionality has to be equal')
+        if not all(x.dtype == data_sources[0].dtype for x in data_sources):
+            raise ValueError('Data sources data type has to be equal')
+        if not all(x.ttype == data_sources[0].ttype for x in data_sources):
+            raise ValueError('Data sources target type has to be equal')
 
         self._data_sources = data_sources
         self._ds_ends = np.array([0] + [len(d) for d in data_sources]).cumsum()
@@ -448,10 +522,51 @@ class AggregatedDataSource(object):
     @classmethod
     def from_files(cls, data_files, target_files, memory_mapped=False,
                    data_source_type=DataSource, names=None, **kwargs):
-        # TODO: Add Docstring
+        """
+        Create a :class:AggregatedDataSource from multiple NumPy binary
+        files.
 
+        Parameters
+        ----------
+        data_files : list of file-like objects or strings
+            Data files to read. For each element in this list a new
+            :class:`DataSource` will be created.
+        target_files : list of file-like objects or strings
+            Target files to read. Each file in this list must correspond to the
+            data file in :param:`data_files` at the same index.
+        memory_mapped : bool
+            Should data and targets be read memory-mapped or loaded into
+            memory.
+        data_source_type : type
+            Datasource type. By default a standard :class:`DataSource`, but
+            you can use other types, e.g. :class:`ContextDataSource`.
+        names : list of strings or None
+            Names of the datasources. Has to be of same length as
+            :param:`data_files`. If None, file names without extensions will
+            be used.
+        **kwargs :
+            Keyword arguments passed to the `from_files` classmethod of each
+            data source created.
+
+        Returns
+        -------
+        AggregatedDataSource
+            :class:AggregatedDataSource of data sources created given the
+            file lists.
+
+        """
         if not names:
             names = [basename(d).split('.')[0] for d in data_files]
+
+        if len(data_files) != len(target_files):
+            raise ValueError('Need same number of data files ({}) and '
+                             'target files ({})'.format(len(data_files),
+                                                        len(target_files)))
+
+        if len(names) != len(data_files):
+            raise ValueError('Need same number of names ({}) and '
+                             'data files ({})'.format(len(names),
+                                                      len(data_files)))
 
         return cls(
             [data_source_type.from_files(d, t, memory_mapped=memory_mapped,
@@ -459,44 +574,43 @@ class AggregatedDataSource(object):
              for d, t, n in izip(data_files, target_files, names)]
         )
 
-    def save(self, data_file, target_file):
-        # TODO: Add Docstring
-
-        with TemporaryFile() as data_tmp, TemporaryFile() as target_temp:
-            data_shape = (self.n_data,) + self.dshape
-            df = np.memmap(data_tmp, shape=data_shape, dtype=self.dtype)
-            target_shape = (self.n_data,) + self.tshape
-            tf = np.memmap(target_temp, shape=target_shape, dtype=self.ttype)
-
-            for i in range(self.n_data):
-                d, t = self[i]
-                df[i] = d
-                tf[i] = t
-
-            np.save(data_file, df)
-            np.save(target_file, tf)
-
     def _to_ds_idx(self, idx):
+        """Computes the datasource index for a given element index"""
         ds_idx = self._ds_ends.searchsorted(idx, side='right') - 1
         d_idx = idx - self._ds_ends[ds_idx]
         return ds_idx, d_idx
 
-    def __getitem__(self, item):
-        # TODO: Add Docstring
-        if isinstance(item, int):
-            ds_idx, d_idx = self._to_ds_idx(item)
+    def __getitem__(self, idx):
+        """
+        Return pre-processed data and targets for given index.
+
+        Parameters
+        ----------
+        idx : int, slice, list, np.ndarray
+            Index of data and targets to return.
+
+        Returns
+        -------
+        tuple
+            Pre-processed data and targets for given index. If
+            :param:`keep_order` was set to False, and :param:`idx` is a list,
+            slice or np.ndarray, the order of the data might not correspond to
+            the order given in :param:`idx`.
+        """
+        if isinstance(idx, int):
+            ds_idx, d_idx = self._to_ds_idx(idx)
             return self._data_sources[ds_idx][d_idx]
 
-        elif isinstance(item, list):
+        elif isinstance(idx, list):
             if self.keep_order:
-                item = np.array(item)
-                sort_idxs = item.argsort()
-                item = item[sort_idxs]
+                idx = np.array(idx)
+                sort_idxs = idx.argsort()
+                idx = idx[sort_idxs]
                 revert_idxs = sort_idxs.argsort()
             else:
-                item.sort()
+                idx.sort()
 
-            ds_idxs, d_idxs = self._to_ds_idx(item)
+            ds_idxs, d_idxs = self._to_ds_idx(idx)
             data_list = []
             target_list = []
 
@@ -516,60 +630,67 @@ class AggregatedDataSource(object):
 
             return data, targets
 
-        elif isinstance(item, slice):
-            return self[range(item.start or 0, item.stop or self.n_data,
-                              item.step or 1)]
+        elif isinstance(idx, slice):
+            return self[range(idx.start or 0, idx.stop or self.n_data,
+                              idx.step or 1)]
 
-        elif isinstance(item, np.ndarray):
-            return self[list(item)]
+        elif isinstance(idx, np.ndarray):
+            return self[list(idx)]
 
         else:
-            raise TypeError('Index type {} not supported!'.format(type(item)))
+            raise TypeError('Index type {} not supported!'.format(type(idx)))
 
-    def get_datasource(self, idx):
+    def datasource(self, idx):
         """
-        Gets a single DataSource
-        :param idx: index of the datasource
-        :return: datasource
+        Get a single DataSource.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the data source
+
+        Returns
+        -------
+        :class:`DataSource`
         """
         return self._data_sources[idx]
 
     @property
     def n_datasources(self):
-        # TODO: Add Docstring
+        """int: number of data sources"""
         return len(self._data_sources)
 
     @property
     def n_data(self):
-        # TODO: Add Docstring
+        """int: number of data points (equals number of targets)"""
         return sum(ds.n_data for ds in self._data_sources)
 
     def __len__(self):
-        # TODO: Add Docstring
+        """int: number of data points (equals number of targets)"""
         return self.n_data
 
     @property
     def dshape(self):
-        # TODO: Add Docstring
+        """tuple: shape of a data point"""
         return self._data_sources[0].dshape
 
     @property
     def tshape(self):
-        # TODO: Add Docstring
+        """tuple: shape of a target"""
         return self._data_sources[0].tshape
 
     @property
     def dtype(self):
-        # TODO: Add Docstring
+        """type: dtype of the data"""
         return self._data_sources[0].dtype
 
     @property
     def ttype(self):
-        # TODO: Add Docstring
+        """type: dtype of the targets"""
         return self._data_sources[0].ttype
 
     def __str__(self):
-        # TODO: Add Docstring
+        """str: a string representation of the :class:DataSource"""
         return '{}: N={}  dshape={}  tshape={}'.format(
             self.__class__.__name__,
             self.n_data, self.dshape, self.tshape)
@@ -646,7 +767,7 @@ def cache_datasource(datasource, batch_size=8192, cache_dir=None):
 def cache_aggregated_datasource(agg_datasource, batch_size=8192,
                                 cache_dir=None):
     # TODO: Add Docstring
-    datasources = [agg_datasource.get_datasource(i)
+    datasources = [agg_datasource.datasource(i)
                    for i in range(agg_datasource.n_datasources)]
     cached_ds = [cache_datasource(ds, batch_size, cache_dir)
                  for ds in datasources]
