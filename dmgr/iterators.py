@@ -120,7 +120,7 @@ def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
     max_len = max_seq_len or 0
 
     for ds_idx in ds_idxs:
-        ds = aggregated_data_source.get_datasource(ds_idx)
+        ds = aggregated_data_source.datasource(ds_idx)
         # we chunk the data according to sequence_length
         for d, t in iterate_batches(ds, max_seq_len or ds.n_data,
                                     shuffle=False, expand=False):
@@ -139,7 +139,7 @@ def iterate_datasources(aggregated_data_source, batch_size, shuffle=False,
         # add more sequences until we fill it up
         # get a random data source
         ds_idx = random.sample(ds_idxs, 1)[0]
-        ds = aggregated_data_source.get_datasource(ds_idx)
+        ds = aggregated_data_source.datasource(ds_idx)
         for d, t in iterate_batches(ds, max_seq_len or ds.n_data,
                                     shuffle=False, expand=False):
             data_chunks.append(d)
@@ -237,3 +237,13 @@ class ClassBalancedIterator:
     def __iter__(self):
         return iterate_batches_probabilistic(self.data_source,
                                              self.batch_size, self.dist)
+
+
+class AugmentedIterator:
+
+    def __init__(self, batch_iterator, augment_fn):
+        self.batch_iterator = batch_iterator
+        self.augment = augment_fn
+
+    def __iter__(self):
+        return self.augment(self.batch_iterator.__iter__())
