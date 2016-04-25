@@ -699,27 +699,29 @@ class AggregatedDataSource(object):
 def get_datasources(files, preprocessors=None, cached=False, cache_dir=None,
                     **kwargs):
     """
-    This function creates datasources with given preprocessors given
-    a files dictionary. The dictionary looks as follows:
+    This function creates pre-processed datasources given a list of
+    file dictionares. A file dictionary contains two keys: 'feat' and 'targ',
+    where each refers to a list of feature and target files respectively.
+    The preprocessors are trained using the datasource defined by the first
+    dictionary
 
-    {'train': {'feat': [train feature files],
-               'targ': [train targets files]}
-     'val': {'feat': [validation feature files],
-             'targ': [validation target files]},
-     'test': {'feat': [test feature files],
-             'targ': [test target files]}
-    }
+    Parameters
+    ----------
+    files : list of dict
+        file dictionaries with the aforementioned format
+    preprocessors : list of callables or None
+        preprocessors to be applied to the data
+    cached : bool
+        cache datasources or not
+    cache_dir : string
+        directory where to cache datasources
+    **kwargs :
+        additional arguments to be passed to AggregatedDataSource.from_files
 
-    The preprocessors are trained on the training data.
-
-    :param files:         file dictionary with the aforementioned format
-    :param preprocessors: list of preprocessors to be applied to the data
-    :param cached:        cache datasources
-    :param cache_dir:     where to cache datasources
-    :param kwargs:        additional arguments to be passed to
-                          AggregatedDataSource.from_files
-    :return:              tuple of train data source, validation data source
-                          and test data source
+    Returns
+    -------
+    list of :class:AggregatedDataSource
+        :class:AggregatedDataSource instances for each entry in :param:files
     """
 
     datasources = [
@@ -743,7 +745,27 @@ def get_datasources(files, preprocessors=None, cached=False, cache_dir=None,
 
 
 def cache_datasource(datasource, batch_size=8192, cache_dir=None):
-    # TODO: Add Docstring
+    """
+    Caches a :class:DataSource into a temporary file. This function can be
+    used to pre-compute all pre-processing steps and avoid generating
+    the context when using a :class:ContextDataSource
+
+    Parameters
+    ----------
+    datasource : :class:DataSource
+        Data source to be cached
+    batch_size : int
+        Pre-compute the datasource using this batch size (useful when low on
+        memory)
+    cache_dir : str
+        Directory to put the temporary files to
+
+    Returns
+    -------
+    :class:DataSource
+        Cached data source
+
+    """
     from tempfile import NamedTemporaryFile
 
     f_cache = NamedTemporaryFile(suffix='.npz', dir=cache_dir)
@@ -756,7 +778,7 @@ def cache_datasource(datasource, batch_size=8192, cache_dir=None):
 
     i = 0
     for f, t in iterate_batches(datasource, batch_size=batch_size,
-                                shuffle=False, expand=False):
+                                randomise=False, expand=False):
         features[i:i + f.shape[0]] = f
         targets[i:i + t.shape[0]] = t
         i += f.shape[0]
@@ -766,7 +788,26 @@ def cache_datasource(datasource, batch_size=8192, cache_dir=None):
 
 def cache_aggregated_datasource(agg_datasource, batch_size=8192,
                                 cache_dir=None):
-    # TODO: Add Docstring
+    """
+    Cache an :class:AggregatedDataSource. This is done by caching all data
+    sources that it comprises.
+
+    Parameters
+    ----------
+    agg_datasource : :class:AggregatedDataSource
+        Aggregated data source to cache.
+    batch_size : int
+        Pre-compute the datasource using this batch size (useful when low on
+        memory)
+    cache_dir : str
+        Directory to put the temporary files to
+
+    Returns
+    -------
+    :class:AggregatedDataSource
+        Cached aggregated data source
+
+    """
     datasources = [agg_datasource.datasource(i)
                    for i in range(agg_datasource.n_datasources)]
     cached_ds = [cache_datasource(ds, batch_size, cache_dir)

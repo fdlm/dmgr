@@ -15,9 +15,19 @@ def find(directory, pattern):
     """
     Generator that recursively finds all files in a directory that match the
     pattern
-    :param directory: directory to search for files in
-    :param pattern:   file pattern (e.g. '*.npy')
-    :return:          filenames
+
+    Parameters
+    ----------
+    directory : str
+        directory to search for files in
+    pattern : str
+       file pattern (e.g. '*.npy')
+
+    Yields
+    ------
+    str
+        found filenames
+
     """
     for root, dirs, files in os.walk(directory):
         for basename in files:
@@ -29,11 +39,20 @@ def find(directory, pattern):
 def expand(files_and_dirs, pattern):
     """
     Goes through list of files and directories, and expands directories
-    to all files contained in it matching the pattern.
-    :param files_and_dirs: list of files and directories
-    :param pattern:        file pattern (or list of file patterns) to look for
-                           in directories.
-    :return:               list of filenames
+    to all files contained in it (and its sub-directories) matching the
+    pattern.
+
+    Parameters
+    ----------
+    files_and_dirs : list of str
+        files and directories to traverse
+    pattern : list of str, or str
+        file pattern (or list of file patterns) to look for in directories
+
+    Returns
+    -------
+    list of str
+        list of filenames
     """
     if not isinstance(files_and_dirs, list):
         files_and_dirs = [files_and_dirs]
@@ -66,28 +85,40 @@ def prepare(source_files, ground_truth_files, dest_dir,
     If the corresponding feature or target file already exists,
     it will not be computed again.
 
-    :param source_files:     list of source files (e.g. list of audio files)
-    :param ground_truth_files: list of ground truth files (e.g. list of files
-                             with beat annotations). If 'None', no targets will
-                             be computed.
-    :param dest_dir:         directory where to store feature and target files
-    :param compute_feat:     function that takes an audio file and computes the
-                             features for it
-    :param compute_targets:  function that takes the audio file name without
-                             extension ('foo/bar/baz.flac' -> 'foo/bar/baz')
-                             and computes the ground truth for it.
-    :param feat_ext:         feature file extension
-    :param target_ext:       target file extension.
-    :return:                 list of feature files, and if targets were
-                             computed, a list of target files
+    Parameters
+    ----------
+    source_files : list of str
+        Source files (e.g. audio files)
+    ground_truth_files : list of str or None
+        Ground truth files (e.g. list of files with beat annotations). If
+        'None', no targets will be computed.
+    dest_dir : str
+        Directory where to store feature and target files
+    compute_feat : callable
+        Takes an audio file and computes the features for it.
+        If it has a 'name' attribute, the value of this attribute will be
+        used as name of the sub-directory where computed features are stored.
+        Else, the name of the callable will be used for that.
+    compute_targets : callable
+        Takes a ground truth file and computes the targets for it.
+        If it has a 'name' attribute, the value of this attribute will be
+        used as name of the sub-directory where computed targets are stored.
+        Else, the name of the callable will be used for that.
+    feat_ext : str
+        Feature file extension.
+    target_ext : str
+        Target file extension.
+
+    Returns
+    -------
+    tuple of lists
+        list of feature files, and list of target files (latter possibly empty)
     """
 
     feat_files = []
     target_files = []
 
-    if not ground_truth_files:
-        ground_truth_files = it.repeat(None)
-        target_files = None
+    ground_truth_files = ground_truth_files or it.repeat(None)
 
     def get_name(c):
         try:
@@ -126,21 +157,37 @@ def prepare(source_files, ground_truth_files, dest_dir,
 
         feat_files.append(feat_file)
 
-    if target_files is not None:
-        return feat_files, target_files
-    else:
-        return feat_files
+    return feat_files, target_files
 
 
-def match_files(files, ext, matching_files, matching_ext):
+def match_files(files, ext, match_files, match_ext):
     """
-    Finds matching files in two lists, ignoring extensions.
-    :param files:  list of file names to find matches for
-    :param ext:    file extension of files to find matches for
-    :param matching_files: list of file names to matches
-    :param matching_ext:   file extension of second files to match
-    :return:               list of files from second_files that match the ones
-                           in the first_files list
+    Find matching files in two lists, ignoring extensions and directories.
+    Concretely, for each file in :param:files, find a file in
+    :param:match_files with the same name, ignoring file extensions as given
+    by :param:ext and :param:match_ext, and directories.
+
+    Parameters
+    ----------
+    files : list of str
+        File names to find matches for
+    ext : str
+        File extension to ignore in :param:files
+    match_files : list of str
+        File names to search for matches in
+    match_ext : str
+        File extension to ignore in :param:match_files
+
+    Returns
+    -------
+    list of str
+        Files from :param:match_files that match the ones in
+        :param:files
+
+    Raises
+    ------
+    RuntimeError
+        If no file or multiple files were found for a file in :param:files
     """
     matched_second_files = []
 
@@ -151,29 +198,45 @@ def match_files(files, ext, matching_files, matching_ext):
         f = os.path.basename(f)
         if len(ext) > 0:
             f = strip_ext(f, ext)
-        matches = fnmatch.filter(matching_files, '*' + f + matching_ext)
+        matches = fnmatch.filter(match_files, '*' + f + match_ext)
         if len(matches) > 1:
-            raise SystemExit('Multiple matching '
-                             'files for {}: {}'.format(f, matches))
+            raise RuntimeError('Multiple matching '
+                               'files for {}: {}'.format(f, matches))
         elif len(matches) == 0:
-            raise SystemExit('No matching files for {}!'.format(f))
+            raise RuntimeError('No matching files for {}!'.format(f))
         else:
             matched_second_files.append(matches[0])
 
     return matched_second_files
 
 
-def random_split(files, split_perc=0.5):
+def random_split(lst, p=0.5):
     """
-    Splits files randomly into two sets
-    :param files:      list of files
-    :param split_perc: percentage of files to be contained in first set
-    :return:           two lists of files split
+    Randomly split a list into two lists
+
+    Parameters
+    ----------
+    lst : list
+        List to be split
+    p : float
+        Percentage of files to be contained in first list (<=1.0)
+
+    Returns
+    -------
+    tuple of lists
+        split lists
+
+    Raises
+    ------
+    ValueError
+        if p > 1.0
     """
-    files = list(files)
-    random.shuffle(files)
-    n_split = int(len(files) * split_perc)
-    return files[:n_split], files[n_split:]
+    if p > 1.0:
+        raise ValueError("Split percentage must be <= 1.0")
+    lst = list(lst)
+    random.shuffle(lst)
+    n_split = int(len(lst) * p)
+    return lst[:n_split], lst[n_split:]
 
 
 def predefined_split(files, ext, *split_defs):

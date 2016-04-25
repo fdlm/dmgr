@@ -4,17 +4,35 @@ import pickle
 from . import iterators
 
 
-def stats_batchwise(dataset, batch_size=1024):
-    # TODO: Add Docstring
-    mean = np.zeros(dataset.dshape, dtype=np.float32)
+def stats_batchwise(data_source, batch_size=1024):
+    """
+    Compute mean and standard deviation (diagonal) of a data source batch-wise.
+    This means not all the data-set needs to be loaded into memory.
+
+    Parameters
+    ----------
+    data_source : :class:DataSource
+        Data source to compute the mean and std. deviation for.
+    batch_size : int
+        Batch size for the computation. Smaller values are slower, larger
+        values need more memory
+
+    Returns
+    -------
+    float, float
+        Mean and standard deviation of the data
+
+    """
+    mean = np.zeros(data_source.dshape, dtype=np.float32)
     mean_xs = np.zeros_like(mean, dtype=np.float32)
 
-    for x, _ in iterators.iterate_batches(dataset, batch_size, expand=False):
+    for x, _ in iterators.iterate_batches(data_source, batch_size,
+                                          expand=False):
         corr_fact = float(x.shape[0]) / batch_size
         mean += x.mean(axis=0) * corr_fact
         mean_xs += (x ** 2).mean(axis=0) * corr_fact
 
-    corr_fact = float(batch_size) / dataset.n_data
+    corr_fact = float(batch_size) / data_source.n_data
     mean *= corr_fact
     mean_xs *= corr_fact
     std = np.sqrt(mean_xs - mean ** 2)
@@ -22,85 +40,176 @@ def stats_batchwise(dataset, batch_size=1024):
     return mean, std
 
 
-def max_batchwise(dataset, batch_size=1024):
-    # TODO: Add Docstring
-    max_val = np.zeros(dataset.dshape, dtype=np.float32)
+def max_batchwise(data_source, batch_size=1024):
+    """
+    Compute the point-wise maximum of data from a data-source batch-wise.
+    This means not all the data needs to be loaded into memory
 
-    for x, _ in iterators.iterate_batches(dataset, batch_size, expand=True):
+    Parameters
+    ----------
+    data_source : :class:DataSource
+        Data source to compute the max for.
+    batch_size : int
+        Batch size for the computation. Smaller values are slower, larger
+        values need more memory
+
+    Returns
+    -------
+    float
+        Point-wise maximum of the data
+    """
+    max_val = np.zeros(data_source.dshape, dtype=np.float32)
+
+    for x, _ in iterators.iterate_batches(data_source, batch_size,
+                                          expand=True):
         max_val = np.maximum(max_val, np.abs(x).max(axis=0))
 
     return max_val
 
 
 class ZeroMeanUnitVar(object):
-    # TODO: Add Docstring
+    """
+    Normalises data such that each dimension has a zero mean and unit
+    variance.
+
+    Parameters
+    ----------
+    mean : float
+        Initial mean shift
+    std_dev : float
+        Initial std. dev. norm
+    """
 
     def __init__(self, mean=0., std_dev=1.):
-        # TODO: Add Docstring
         self.mean = mean
         self.std_dev = std_dev
 
     def __call__(self, data):
-        # TODO: Add Docstring
+        """Normalise :param:data"""
         return (data - self.mean) / self.std_dev
 
-    def train(self, dataset, batch_size=4096):
-        # TODO: Add Docstring
-        self.mean, self.std_dev = stats_batchwise(dataset, batch_size)
+    def train(self, data_source, batch_size=4096):
+        """
+        Determine mean shift and std. dev. normalisation factor
+
+        Parameters
+        ----------
+        data_source : :class:DataSource
+            Data from which to estimate mean and std. dev.
+        batch_size : int
+            Batch size used to compute mean and std. dev.
+            (see :func:stats_batchwise)
+        """
+        self.mean, self.std_dev = stats_batchwise(data_source, batch_size)
 
     def load(self, filename):
-        # TODO: Add Docstring
+        """
+        Load mean shift and std. dev. normalisation factor from a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file containing the parameters
+        """
         with open(filename, 'r') as f:
             self.mean, self.std_dev = pickle.load(f)
 
     def save(self, filename):
-        # TODO: Add Docstring
+        """
+        Save mean shift and std. dev normalisation factor to a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file to store the parameters to
+        """
         with open(filename, 'w') as f:
             pickle.dump((self.mean, self.std_dev), f)
 
 
 class MaxNorm(object):
-    # TODO: Add Docstring
+    """
+    Normalises the data such that the maximum value of each dimension is 1.
+
+    Parameters
+    ----------
+    max_val : float
+        Default scaling factor
+    """
 
     def __init__(self, max_val=1.):
-        # TODO: Add Docstring
         self.max_val = max_val
 
     def __call__(self, data):
-        # TODO: Add Docstring
+        """Normalise :param:data"""
         return data / self.max_val
 
-    def train(self, dataset, batch_size=4096):
-        # TODO: Add Docstring
-        self.max_val = np.max(max_batchwise(dataset, batch_size))
+    def train(self, data_source, batch_size=4096):
+        """
+        Determine max normalisation factors from data.
+
+        Parameters
+        ----------
+        data_source : :class:DataSource
+            Data from which to estimate maximum value for each dimension
+        batch_size : int
+            Batch size used to estimate the maximum value
+            (see :func:max_batchwise)
+        """
+        self.max_val = np.max(max_batchwise(data_source, batch_size))
 
     def load(self, filename):
-        # TODO: Add Docstring
+        """
+        Load normalisation factors from a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file containing the parameters
+        """
         with open(filename, 'r') as f:
             self.max_val = pickle.load(f)
 
     def save(self, filename):
-        # TODO: Add Docstring
+        """
+        Save normalisation factors to a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file to store the parameters to
+        """
         with open(filename, 'w') as f:
             pickle.dump(self.max_val, f)
 
 
 class PcaWhitening(object):
-    # TODO: Add Docstring
+    """
+    Whitens the data using principal component analysis.
+
+    To speed up training the transformation, you can specify how many data
+    points from the training data source to use.
+
+    Parameters
+    ----------
+    n_train_vectors : int or None
+        Number of data points to use when training the PCA. If `None`, use all
+        values.
+    n_components : int or None
+        Number of components to use in PCA. If `None`, use all components,
+        resulting in no data reduction.
+    """
 
     def __init__(self, n_train_vectors=None, n_components=None):
-        """
-        Data whitening using PCA
-        :param n_train_vectors: max number of feature vectors used for
-                                training. 'None' means 'use all vectors'
-        """
-        self.pca = None
+        from sklearn.decomposition import PCA
+        self.pca = PCA(whiten=True, n_components=self.n_components)
+        self.fit = False
         self.n_train_vectors = n_train_vectors
         self.n_components = n_components
 
     def __call__(self, data):
-        # TODO: Add Docstring
-        if self.pca is not None:
+        """Project the :param:data using the PCA projection."""
+        if self.fit:
             # flatten features, pca only works on 1d arrays
             data_shape = data.shape
             data_flat = data.reshape((data_shape[0], -1))
@@ -110,52 +219,88 @@ class PcaWhitening(object):
         else:
             return data
 
-    def train(self, dataset, batch_size=4096):
-        # TODO: Add Docstring
-        from sklearn.decomposition import PCA
+    def train(self, data_source, batch_size=4096):
+        """
+        Fit the PCA projection to data.
+
+        Parameters
+        ----------
+        data_source : :class:DataSource
+            Data to use for fitting the projection
+        batch_size : int
+            Not used here.
+        """
 
         # select a random subset of the data if self.n_train_vectors is not
         # None
         if self.n_train_vectors is not None:
-            sel_data = list(np.random.choice(dataset.n_data,
+            sel_data = list(np.random.choice(data_source.n_data,
                                              size=self.n_train_vectors,
                                              replace=False))
         else:
             sel_data = slice(None)
-        data = dataset[sel_data][0]  # ignore the labels
+        data = data_source[sel_data][0]  # ignore the labels
         data_flat = data.reshape((data.shape[0], -1))  # flatten features
-        self.pca = PCA(whiten=True, n_components=self.n_components)
         self.pca.fit(data_flat)
+        self.fit = True
 
     def load(self, filename):
-        # TODO: Add Docstring
+        """
+        Load the PCA projection parameters from a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file containing the projection parameters
+
+        """
         with open(filename, 'r') as f:
             self.pca.set_params(pickle.load(f))
+            self.fit = True
 
     def save(self, filename):
-        # TODO: Add Docstring
+        """
+        Save the PCA projection parameters to a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file to store the parameters to
+        """
         with open(filename, 'w') as f:
             pickle.dump(self.pca.get_params(deep=True), f)
 
 
 class ZcaWhitening(object):
-    # TODO: Add Docstring
+    """
+    Whitens the data using ZCA whitening.
 
-    def __init__(self, regularisation, n_train_vectors=None):
-        """
-        Data whitening using ZCA
-        :param regularisation:  regularisation parameter (surprise!)
-        :param n_train_vectors: max number of feature vectors used for
-                                training. 'None' means 'use all vectors'
-        """
+    Compared to PCA whitening, this transformation decorrelates *locally*,
+    making it is useful for convolutional neural networks.
+
+    For details on this method, see
+
+    Alex Krizhevsky. "Learning Multiple Layers of Features from Tiny Images."
+    Technical Report 2009.
+    http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf
+
+    Parameters
+    ----------
+    n_train_vectors : int or None
+        Number of data points to use when training the ZCA. If `None`, use all
+        values.
+    regularisation : float
+        Regularisation parameter for fitting the ZCA.
+    """
+
+    def __init__(self,  n_train_vectors=None, regularisation=10**-5):
         self.mean = None
         self.components = None
         self.regularisation = regularisation
         self.n_train_vectors = n_train_vectors
 
     def __call__(self, data):
-        # TODO: Add Docstring
-
+        """Project the :param:data using the ZCA projection."""
         if self.components is None:
             return data
 
@@ -163,10 +308,19 @@ class ZcaWhitening(object):
         data = np.reshape(data, (data.shape[0], -1))
         return np.dot(data - self.mean, self.components.T).reshape(orig_shape)
 
-    def train(self, dataset, batch_size=4096):
-        # TODO: Add Docstring
+    def train(self, data_source, batch_size=4096):
+        """
+        Fit the ZCA projection to data.
+
+        Parameters
+        ----------
+        data_source : :class:DataSource
+            Data to use for fitting the projection
+        batch_size : int
+            Not used here.
+        """
         if self.n_train_vectors is not None:
-            sel_data = list(np.random.choice(dataset.n_data,
+            sel_data = list(np.random.choice(data_source.n_data,
                                              size=self.n_train_vectors,
                                              replace=False))
         else:
@@ -175,7 +329,7 @@ class ZcaWhitening(object):
         from scipy import linalg
         from sklearn.utils import as_float_array
 
-        x = dataset[sel_data]
+        x = data_source[sel_data]
         x = np.reshape(x, (x.shape[0], -1))
         x = as_float_array(x, copy=True)
 
@@ -193,3 +347,26 @@ class ZcaWhitening(object):
         tmp = np.dot(u, np.diag(1.0 / np.sqrt(s + self.regularisation)))
         self.components = np.dot(tmp, u.T)
 
+    def load(self, filename):
+        """
+        Load the ZCA projection parameters from a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file containing the projection parameters.
+        """
+        with open(filename, 'r') as f:
+            self.components, self.mean = pickle.load(f)
+
+    def save(self, filename):
+        """
+        Save the ZCA projection parameters to a pickle file.
+
+        Parameters
+        ----------
+        filename : str
+            Pickle file to store the parameters to
+        """
+        with open(filename, 'w') as f:
+            pickle.dump((self.components, self.mean), f)
