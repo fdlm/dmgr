@@ -1,6 +1,12 @@
 import collections
 import random
 import numpy as np
+import functools
+
+
+def compose(*functions):
+    return functools.reduce(lambda f, g: lambda x: f(g(x)), functions,
+                            lambda x: x)
 
 
 def threaded(generator, num_cached=10):
@@ -241,9 +247,9 @@ class ClassBalancedIterator:
 
 class AugmentedIterator:
 
-    def __init__(self, batch_iterator, augment_fn):
+    def __init__(self, batch_iterator, *augment_fns):
         self.batch_iterator = batch_iterator
-        self.augment = augment_fn
+        self.augment = compose(*augment_fns)
 
     def __iter__(self):
         return self.augment(self.batch_iterator.__iter__())
