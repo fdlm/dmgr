@@ -1,7 +1,8 @@
 import collections
-import random
-import numpy as np
 import functools
+import random
+
+import numpy as np
 
 
 def compose(*functions):

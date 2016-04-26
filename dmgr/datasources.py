@@ -1,7 +1,8 @@
-from os.path import basename, splitext
 from itertools import izip, groupby
-from tempfile import TemporaryFile
+from os.path import basename
+
 import numpy as np
+
 from .iterators import iterate_batches
 
 

@@ -1,7 +1,8 @@
-import numpy as np
 import pickle
 
-from . import iterators
+import numpy as np
+
+from .iterators import iterate_batches
 
 
 def stats_batchwise(data_source, batch_size=1024):
@@ -26,8 +27,7 @@ def stats_batchwise(data_source, batch_size=1024):
     mean = np.zeros(data_source.dshape, dtype=np.float32)
     mean_xs = np.zeros_like(mean, dtype=np.float32)
 
-    for x, _ in iterators.iterate_batches(data_source, batch_size,
-                                          expand=False):
+    for x, _ in iterate_batches(data_source, batch_size, expand=False):
         corr_fact = float(x.shape[0]) / batch_size
         mean += x.mean(axis=0) * corr_fact
         mean_xs += (x ** 2).mean(axis=0) * corr_fact
@@ -60,8 +60,7 @@ def max_batchwise(data_source, batch_size=1024):
     """
     max_val = np.zeros(data_source.dshape, dtype=np.float32)
 
-    for x, _ in iterators.iterate_batches(data_source, batch_size,
-                                          expand=True):
+    for x, _ in iterate_batches(data_source, batch_size, expand=True):
         max_val = np.maximum(max_val, np.abs(x).max(axis=0))
 
     return max_val

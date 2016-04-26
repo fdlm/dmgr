@@ -1,14 +1,12 @@
+import fnmatch
 import itertools as it
 import os
 import random
-import fnmatch
 
 import numpy as np
 
-AUDIO_EXT = '.flac'
 FEAT_EXT = '.features.npy'
 TARGET_EXT = '.targets.npy'
-FPS = 100
 
 
 def find(directory, pattern):
