@@ -56,8 +56,7 @@ def threaded(generator, num_cached=10):
     return consumer()
 
 
-def iterate_batches(data_source, batch_size, randomise=False, expand=True,
-                    add_time_dim=False):
+def iterate_batches(data_source, batch_size, randomise=False, expand=True):
     """
     Generates mini-batches from a data source.
 
@@ -73,8 +72,6 @@ def iterate_batches(data_source, batch_size, randomise=False, expand=True,
     expand : bool
         Indicates whether to fill up the last mini-batch with
         random data points if there is not enough data available.
-    add_time_dim : bool
-        TODO: ????
 
     Yields
     ------
@@ -99,15 +96,7 @@ def iterate_batches(data_source, batch_size, randomise=False, expand=True,
             batch_idxs += random.sample(idxs[:start_idx], n_missing)
 
         start_idx += batch_size
-
-        if add_time_dim:
-            d, t = data_source[batch_idxs]
-            new_dshape = (d.shape[0], 1) + d.shape[1:]
-            new_tshape = (t.shape[0], 1) + t.shape[1:]
-            yield d.reshape(new_dshape), t.reshape(new_tshape)
-
-        else:
-            yield data_source[batch_idxs]
+        yield data_source[batch_idxs]
 
 
 def _chunks_to_arrays(data_chunks, target_chunks, max_len):
@@ -290,8 +279,6 @@ class BatchIterator:
     expand : bool
         Indicates whether to fill up the last mini-batch with
         random data points if there is not enough data available.
-    add_time_dim : bool
-        TODO: ????
 
     Yields
     ------
@@ -299,18 +286,16 @@ class BatchIterator:
         mini-batch of data and targets
     """
 
-    def __init__(self, data_source, batch_size, randomise=False, expand=True,
-                 add_time_dim=False):
+    def __init__(self, data_source, batch_size, randomise=False, expand=True):
         self.data_source = data_source
         self.batch_size = batch_size
         self.randomise = randomise
         self.expand = expand
-        self.add_time_dim = add_time_dim
 
     def __iter__(self):
         """Returns the mini batch generator."""
         return iterate_batches(self.data_source, self.batch_size,
-                               self.randomise, self.expand, self.add_time_dim)
+                               self.randomise, self.expand)
 
 
 class SequenceIterator:
