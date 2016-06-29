@@ -78,6 +78,19 @@ class Dataset(object):
 
         self.split_defs = split_defs
 
+    def all_files(self):
+        """
+        Return all feature and target files without split
+
+        Returns
+        -------
+        List of dict
+            Dictionaries containing all feature files (key: 'feat') and
+            all target files (key: 'targ')
+        """
+        return {'feat': self.feature_files,
+                'targ': self.target_files}
+
     def predefined_split(self, *split_defs):
         """
         For each split_def, creates a file dictionary with features and target

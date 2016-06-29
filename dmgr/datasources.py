@@ -784,7 +784,9 @@ def cache_datasource(datasource, batch_size=8192, cache_dir=None):
         targets[i:i + t.shape[0]] = t
         i += f.shape[0]
 
-    return DataSource(features, targets, name=datasource.name)
+    ds = DataSource(features, targets, name=datasource.name)
+    ds.cache_files = [f_cache, t_cache]
+    return ds
 
 
 def cache_aggregated_datasource(agg_datasource, batch_size=8192,
