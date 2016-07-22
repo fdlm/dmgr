@@ -200,5 +200,3 @@ class Dataset(object):
             splits.append({'feat': feat, 'targ': targ})
 
         return splits
-
-

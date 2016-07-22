@@ -134,7 +134,8 @@ def prepare(source_files, ground_truth_files, dest_dir,
 
     for sf, gtf in zip(source_files, ground_truth_files):
         neutral_file = os.path.splitext(os.path.basename(sf))[0]
-        feat_file = os.path.abspath(os.path.join(feat_cache_path, neutral_file + feat_ext))
+        feat_file = os.path.abspath(
+            os.path.join(feat_cache_path, neutral_file + feat_ext))
 
         feat = None
         if not os.path.exists(feat_file):
@@ -270,4 +271,3 @@ def predefined_split(files, ext, *split_defs):
         train_files.difference_update(set(splits[-1]))
 
     return [list(train_files)] + splits
-
